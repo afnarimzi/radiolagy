@@ -12,9 +12,9 @@ from datetime import datetime
 from app.database.database import get_db
 from app.database.crud import RadiologyDB
 from app.agents.radiology_agent import RadiologyAgent
-from app.agents.risk_agent import RiskAgent
+from app.agents.risk_agent import RiskAssessmentAgent
 from app.models.radiology_models import XrayInput, RadiologyFindings
-from app.models.risk_models import RiskAssessmentInput, RiskAssessmentOutput
+from app.models.risk_models import RiskInput, RiskAssessment
 from app.api.models import (
     PatientCreate, PatientResponse, 
     CaseResponse, AnalysisRequest, AnalysisResponse,
@@ -40,7 +40,7 @@ app.add_middleware(
 
 # Initialize agents
 radiology_agent = RadiologyAgent()
-risk_agent = RiskAgent(api_key=os.getenv("RISK_AGENT_API_KEY"))
+risk_agent = RiskAssessmentAgent()
 
 @app.get("/")
 async def root():
@@ -186,29 +186,32 @@ async def upload_and_analyze(
 async def assess_risk(request: RiskAssessmentRequest, db: Session = Depends(get_db)):
     """Assess medical risk based on radiology findings"""
     try:
-        # If case_id provided, get radiology findings from database
-        if request.case_id:
-            from app.database.models import PatientOutput
-            radiology_output = db.query(PatientOutput).filter(
-                PatientOutput.case_id == request.case_id,
-                PatientOutput.agent_type == 'radiology'
-            ).first()
-            
-            if not radiology_output:
-                raise HTTPException(status_code=404, detail="Radiology findings not found for this case")
-            
-            radiology_findings = radiology_output.output_data.get('findings', '')
-        else:
-            if not request.radiology_findings:
-                raise HTTPException(status_code=400, detail="Either case_id or radiology_findings must be provided")
+        # Use provided radiology findings if available, otherwise try database lookup
+        if request.radiology_findings:
             radiology_findings = request.radiology_findings
+        elif request.case_id:
+            from app.database.models import PatientOutput
+            try:
+                radiology_output = db.query(PatientOutput).filter(
+                    PatientOutput.case_id == str(request.case_id),
+                    PatientOutput.agent_type == 'radiology'
+                ).first()
+                
+                if not radiology_output:
+                    raise HTTPException(status_code=404, detail="Radiology findings not found for this case")
+                
+                radiology_findings = radiology_output.output_data.get('findings', '')
+            except Exception as db_error:
+                raise HTTPException(status_code=400, detail=f"Database lookup failed: {str(db_error)}")
+        else:
+            raise HTTPException(status_code=400, detail="Either case_id or radiology_findings must be provided")
         
         # Create risk assessment input
-        risk_input = RiskAssessmentInput(
+        risk_input = RiskInput(
             case_id=request.case_id or str(uuid.uuid4()),
-            patient_code=request.patient_code,
             radiology_findings=radiology_findings,
-            additional_clinical_info=request.additional_clinical_info
+            confidence=0.8,  # Default confidence if not available
+            clinical_context=request.additional_clinical_info
         )
         
         # Assess risk with risk agent
@@ -248,11 +251,11 @@ async def analyze_and_assess_risk(request: AnalysisRequest, db: Session = Depend
         radiology_findings = radiology_agent.analyze(xray_input, save_to_db=True)
         
         # Step 2: Risk assessment
-        risk_input = RiskAssessmentInput(
+        risk_input = RiskInput(
             case_id=radiology_findings.case_id,
-            patient_code=request.patient_code,
             radiology_findings=radiology_findings.findings,
-            additional_clinical_info=request.additional_info
+            confidence=radiology_findings.confidence,
+            clinical_context=request.additional_info
         )
         
         risk_assessment = risk_agent.assess_risk(risk_input, save_to_db=True)

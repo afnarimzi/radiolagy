@@ -48,6 +48,7 @@ class RiskAssessment(BaseModel):
     
     # Additional info
     reasoning: str = Field(..., description="Explanation of risk assessment")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence in risk assessment (0-1)")
     follow_up_required: bool = Field(default=True, description="Whether follow-up is needed")
     specialist_referral: Optional[str] = Field(None, description="Specialist referral if needed")
     

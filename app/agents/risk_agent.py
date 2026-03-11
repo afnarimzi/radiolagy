@@ -271,6 +271,7 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
                 urgency_timeline=parsed_result['urgency_timeline'],
                 next_steps=parsed_result['next_steps'],
                 reasoning=parsed_result['reasoning'],
+                confidence=parsed_result.get('confidence', 0.85),  # Default confidence if not provided
                 follow_up_required=parsed_result.get('follow_up_required', True),
                 specialist_referral=parsed_result.get('specialist_referral'),
                 agent_type="ai_risk_assessment",
@@ -307,6 +308,7 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
                 urgency_timeline="within 1-2 weeks",
                 next_steps=["Contact healthcare provider for manual review"],
                 reasoning=f"AI risk assessment encountered an error. Manual review recommended.",
+                confidence=0.3,  # Low confidence for fallback assessment
                 follow_up_required=True,
                 specialist_referral=None,
                 agent_type="ai_risk_assessment_fallback",
