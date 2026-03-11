@@ -32,7 +32,7 @@ class RadiologyAgent:
         genai.configure(api_key=api_key)
         
         # Use Gemini 2.5 Flash (supports vision)
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.model = genai.GenerativeModel("gemini-2.5-flash")
         self.agent_type = "radiology"
         
     def _create_analysis_prompt(self, additional_info: str = None) -> str:

@@ -80,3 +80,38 @@ class DatabaseStats(BaseModel):
     total_clinical_results: int
     total_reports: int
     average_confidence: float
+    
+# Clinical Agent models
+class ClinicalRequest(BaseModel):
+    case_id: str
+    patient_code: str
+    radiology_findings: str
+    abnormalities: List[str] = []
+    confidence: float = 0.0
+    additional_info: Optional[str] = None
+
+class ClinicalResponse(BaseModel):
+    case_id: str
+    patient_code: str
+    differential_diagnosis: List[str]
+    reasoning: str
+    confidence: float
+    urgency: str
+    recommended_followup: str
+    timestamp: datetime
+
+# Evidence Agent models
+class EvidenceRequest(BaseModel):
+    case_id: str
+    patient_code: str
+    diagnosis: List[str]
+    radiology_findings: str
+
+class EvidenceResponse(BaseModel):
+    case_id: str
+    patient_code: str
+    search_keywords: str
+    evidence_summary: str
+    citations: List[dict]
+    total_papers_found: int
+    timestamp: datetime
