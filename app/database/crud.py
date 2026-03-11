@@ -72,6 +72,21 @@ class RadiologyDB:
         self.db.commit()
         self.db.refresh(output)
         return output
+
+    def save_agent_output(self, case_id: str, agent_type: str, output_data: Dict[str, Any],
+                      confidence: float, processing_time: float = None) -> PatientOutput:
+        """Save any agent output - clinical, evidence, risk etc."""
+        output = PatientOutput(
+            case_id=case_id,
+            agent_type=agent_type,
+            output_data=output_data,
+            confidence=confidence,
+            processing_time=processing_time
+        )
+        self.db.add(output)
+        self.db.commit()
+        self.db.refresh(output)
+        return output
     
     def get_case_output(self, case_id: str) -> Optional[PatientOutput]:
         """Get case output by case ID"""

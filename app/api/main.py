@@ -8,13 +8,19 @@ from typing import List, Optional
 import os
 import uuid
 from datetime import datetime
+from app.agents.clinical_agent import ClinicalAgent
+from app.agents.evidence_agent import EvidenceAgent
+from app.api.models import ClinicalRequest, ClinicalResponse, EvidenceRequest, EvidenceResponse
+from app.models.clinical_models import ClinicalInput
+from app.models.evidence_models import EvidenceInput
+from app.models.risk_models import RiskInput, RiskAssessment
 
 from app.database.database import get_db
 from app.database.crud import RadiologyDB
 from app.agents.radiology_agent import RadiologyAgent
-from app.agents.risk_agent import RiskAgent
+from app.agents.risk_agent import RiskAssessmentAgent as RiskAgent
 from app.models.radiology_models import XrayInput, RadiologyFindings
-from app.models.risk_models import RiskAssessmentInput, RiskAssessmentOutput
+from app.models.risk_models import RiskInput, RiskAssessment
 from app.api.models import (
     PatientCreate, PatientResponse, 
     CaseResponse, AnalysisRequest, AnalysisResponse,
@@ -40,7 +46,9 @@ app.add_middleware(
 
 # Initialize agents
 radiology_agent = RadiologyAgent()
-risk_agent = RiskAgent(api_key=os.getenv("RISK_AGENT_API_KEY"))
+clinical_agent_instance = ClinicalAgent()
+evidence_agent_instance = EvidenceAgent()
+risk_agent = RiskAgent()
 
 @app.get("/")
 async def root():
@@ -204,7 +212,7 @@ async def assess_risk(request: RiskAssessmentRequest, db: Session = Depends(get_
             radiology_findings = request.radiology_findings
         
         # Create risk assessment input
-        risk_input = RiskAssessmentInput(
+        risk_input = RiskInput(
             case_id=request.case_id or str(uuid.uuid4()),
             patient_code=request.patient_code,
             radiology_findings=radiology_findings,
@@ -248,7 +256,7 @@ async def analyze_and_assess_risk(request: AnalysisRequest, db: Session = Depend
         radiology_findings = radiology_agent.analyze(xray_input, save_to_db=True)
         
         # Step 2: Risk assessment
-        risk_input = RiskAssessmentInput(
+        risk_input = RiskInput(
             case_id=radiology_findings.case_id,
             patient_code=request.patient_code,
             radiology_findings=radiology_findings.findings,
@@ -481,6 +489,53 @@ async def get_database_stats(db: Session = Depends(get_db)):
         total_reports=total_reports,
         average_confidence=round(avg_confidence, 2)
     )
+@app.post("/clinical-agent", response_model=ClinicalResponse)
+async def run_clinical_agent(request: ClinicalRequest, db: Session = Depends(get_db)):
+    try:
+        clinical_input = ClinicalInput(
+            case_id=request.case_id,
+            patient_code=request.patient_code,
+            radiology_findings=request.radiology_findings,
+            abnormalities=request.abnormalities,
+            confidence=request.confidence,
+            additional_info=request.additional_info
+        )
+        findings = clinical_agent_instance.analyze(clinical_input, save_to_db=True)
+        return ClinicalResponse(
+            case_id=findings.case_id,
+            patient_code=findings.patient_code,
+            differential_diagnosis=findings.differential_diagnosis,
+            reasoning=findings.reasoning,
+            confidence=findings.confidence,
+            urgency=findings.urgency,
+            recommended_followup=findings.recommended_followup,
+            timestamp=findings.timestamp
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Clinical analysis failed: {str(e)}")
+
+
+@app.post("/evidence-agent", response_model=EvidenceResponse)
+async def run_evidence_agent(request: EvidenceRequest, db: Session = Depends(get_db)):
+    try:
+        evidence_input = EvidenceInput(
+            case_id=request.case_id,
+            patient_code=request.patient_code,
+            diagnosis=request.diagnosis,
+            radiology_findings=request.radiology_findings
+        )
+        findings = evidence_agent_instance.analyze(evidence_input, save_to_db=True)
+        return EvidenceResponse(
+            case_id=findings.case_id,
+            patient_code=findings.patient_code,
+            search_keywords=findings.search_keywords,
+            evidence_summary=findings.evidence_summary,
+            citations=[c.dict() for c in findings.citations],
+            total_papers_found=findings.total_papers_found,
+            timestamp=findings.timestamp
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Evidence search failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
