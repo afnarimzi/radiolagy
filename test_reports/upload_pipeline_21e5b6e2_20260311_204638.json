@@ -1,0 +1,69 @@
+{
+  "message": "Image uploaded and complete 4-agent analysis completed successfully",
+  "upload_info": {
+    "original_filename": "00000003_000.png",
+    "saved_path": "uploads/21e5b6e2-e6d3-44cf-8526-3301214e3811_00000003_000.png",
+    "file_size": 450000,
+    "content_type": "image/png"
+  },
+  "case_id": "21e5b6e2-e6d3-44cf-8526-3301214e3811",
+  "patient_code": "UNKNOWN",
+  "pipeline_status": "completed",
+  "agents_executed": [
+    "radiology",
+    "clinical",
+    "evidence",
+    "risk"
+  ],
+  "radiology_analysis": {
+    "findings": "Analysis failed: 400 API Key not found. Please pass a valid API key. [reason: \"API_KEY_INVALID\"\ndomain: \"googleapis.com\"\nmetadata {\n  key: \"service\"\n  value: \"generativelanguage.googleapis.com\"\n}\n, locale: \"en-US\"\nmessage: \"API Key not found. Please pass a valid API key.\"\n]",
+    "abnormalities": [],
+    "anatomical_structures": [],
+    "confidence": 0.0,
+    "recommendations": "Manual review required due to analysis error",
+    "image_quality": "unknown"
+  },
+  "clinical_analysis": {
+    "differential_diagnosis": [
+      "Technical Issue",
+      "API Key Error",
+      "System Failure"
+    ],
+    "reasoning": "The provided radiology findings indicate a technical issue with the API key, resulting in an analysis failure. The error message 'API Key not found' and 'API_KEY_INVALID' suggests a problem with the authentication process. The absence of detected abnormalities and a radiology confidence of 0.0 further supports the notion that the issue is technical rather than related to the patient's condition. Therefore, the differential diagnosis focuses on technical issues rather than clinical conditions.",
+    "urgency": "routine",
+    "recommended_followup": "Verify API key credentials, contact technical support if necessary, and reattempt analysis to obtain accurate radiology findings.",
+    "confidence": 0.85
+  },
+  "evidence_research": {
+    "search_keywords": "API key error Google APIs",
+    "evidence_summary": "No relevant papers found on PubMed for this diagnosis.",
+    "total_papers_found": 0,
+    "citations": []
+  },
+  "risk_assessment": {
+    "risk_level": "medium",
+    "risk_score": 0.5,
+    "recommended_action": "schedule_appointment",
+    "urgency_timeline": "within 1-2 weeks",
+    "specialist_referral": null,
+    "critical_findings": [],
+    "risk_factors": [
+      "AI assessment failed: 400 API Key not found. Please pass a valid API key. [reason: \"API_KEY_INVALID\"\ndomain: \"googleapis.com\"\nmetadata {\n  key: \"service\"\n  value: \"generativelanguage.googleapis.com\"\n}\n, locale: \"en-US\"\nmessage: \"API Key not found. Please pass a valid API key.\"\n]"
+    ],
+    "next_steps": [
+      "Contact healthcare provider for manual review"
+    ],
+    "reasoning": "AI risk assessment encountered an error. Manual review recommended.",
+    "confidence": 0.3
+  },
+  "overall_confidence": 0.38,
+  "processing_summary": {
+    "total_agents": 4,
+    "successful_agents": 4,
+    "data_flow": "Upload \u2192 Radiology \u2192 Clinical \u2192 Evidence \u2192 Risk",
+    "workflow": "Complete medical analysis from uploaded image"
+  },
+  "timestamp": "2026-03-11T15:16:38.263603",
+  "processing_time_seconds": 3.8899216651916504,
+  "test_timestamp": "2026-03-11T20:46:38.266910"
+}

@@ -2,7 +2,22 @@
 """
 Simple API server startup without reload
 """
+import os
 import uvicorn
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Verify environment variables are loaded
+required_keys = ['GROQ_API_KEY', 'GOOGLE_API_KEY', 'RISK_AGENT_API_KEY']
+missing_keys = [key for key in required_keys if not os.getenv(key)]
+
+if missing_keys:
+    print(f"❌ Missing required environment variables: {', '.join(missing_keys)}")
+    print("Please check your .env file and ensure all API keys are set.")
+    exit(1)
+
 from app.api.main import app
 
 if __name__ == "__main__":

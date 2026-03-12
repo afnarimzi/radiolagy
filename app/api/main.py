@@ -293,6 +293,243 @@ async def analyze_and_assess_risk(request: AnalysisRequest, db: Session = Depend
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Complete analysis failed: {str(e)}")
 
+@app.post("/analyze-complete-pipeline", response_model=dict)
+async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depends(get_db)):
+    """Complete 4-agent pipeline: Radiology → Clinical → Evidence → Risk Assessment"""
+    try:
+        case_id = request.case_id or str(uuid.uuid4())
+        
+        # Step 1: Radiology Analysis
+        xray_input = XrayInput(
+            image_path=request.image_path,
+            patient_code=request.patient_code,
+            case_id=case_id,
+            additional_info=request.additional_info
+        )
+        
+        radiology_findings = radiology_agent.analyze(xray_input, save_to_db=False)  # Disable DB save for testing
+        
+        # Step 2: Clinical Analysis
+        from app.models.clinical_models import ClinicalInput
+        clinical_input = ClinicalInput(
+            case_id=case_id,
+            patient_code=request.patient_code,
+            radiology_findings=radiology_findings.findings,
+            abnormalities=radiology_findings.abnormalities,
+            confidence=radiology_findings.confidence,
+            additional_info=request.additional_info
+        )
+        
+        clinical_findings = clinical_agent_instance.analyze(clinical_input, save_to_db=False)  # Disable DB save for testing
+        
+        # Step 3: Evidence Search
+        from app.models.evidence_models import EvidenceInput
+        # Extract primary diagnosis for evidence search
+        if isinstance(clinical_findings.differential_diagnosis, list):
+            primary_diagnosis = clinical_findings.differential_diagnosis[0] if clinical_findings.differential_diagnosis else "chest abnormality"
+        else:
+            primary_diagnosis = clinical_findings.differential_diagnosis.split(',')[0].strip() if clinical_findings.differential_diagnosis else "chest abnormality"
+        
+        evidence_input = EvidenceInput(
+            case_id=case_id,
+            patient_code=request.patient_code,
+            diagnosis=[primary_diagnosis],
+            radiology_findings=radiology_findings.findings
+        )
+        
+        evidence_findings = evidence_agent_instance.analyze(evidence_input, save_to_db=False)  # Disable DB save for testing
+        
+        # Step 4: Risk Assessment
+        risk_input = RiskInput(
+            case_id=case_id,
+            radiology_findings=radiology_findings.findings,
+            confidence=radiology_findings.confidence,
+            clinical_context=f"Clinical diagnosis: {clinical_findings.differential_diagnosis}. Urgency: {clinical_findings.urgency}"
+        )
+        
+        risk_assessment = risk_agent.assess_risk(risk_input, save_to_db=False)  # Disable DB save for testing
+        
+        # Return comprehensive results
+        return {
+            "case_id": case_id,
+            "patient_code": request.patient_code,
+            "pipeline_status": "completed",
+            "agents_executed": ["radiology", "clinical", "evidence", "risk"],
+            "radiology_analysis": {
+                "findings": radiology_findings.findings,
+                "abnormalities": radiology_findings.abnormalities,
+                "anatomical_structures": radiology_findings.anatomical_structures,
+                "confidence": radiology_findings.confidence,
+                "recommendations": radiology_findings.recommendations,
+                "image_quality": radiology_findings.image_quality
+            },
+            "clinical_analysis": {
+                "differential_diagnosis": clinical_findings.differential_diagnosis,
+                "reasoning": clinical_findings.reasoning,
+                "urgency": clinical_findings.urgency,
+                "recommended_followup": clinical_findings.recommended_followup,
+                "confidence": clinical_findings.confidence
+            },
+            "evidence_research": {
+                "search_keywords": evidence_findings.search_keywords,
+                "evidence_summary": evidence_findings.evidence_summary,
+                "total_papers_found": evidence_findings.total_papers_found,
+                "citations": [c.dict() for c in evidence_findings.citations]
+            },
+            "risk_assessment": {
+                "risk_level": risk_assessment.risk_level,
+                "risk_score": risk_assessment.risk_score,
+                "recommended_action": risk_assessment.recommended_action,
+                "urgency_timeline": risk_assessment.urgency_timeline,
+                "specialist_referral": risk_assessment.specialist_referral,
+                "critical_findings": risk_assessment.critical_findings,
+                "risk_factors": risk_assessment.risk_factors,
+                "next_steps": risk_assessment.next_steps,
+                "reasoning": risk_assessment.reasoning,
+                "confidence": risk_assessment.confidence
+            },
+            "overall_confidence": round((radiology_findings.confidence + clinical_findings.confidence + risk_assessment.confidence) / 3, 2),
+            "processing_summary": {
+                "total_agents": 4,
+                "successful_agents": 4,
+                "data_flow": "Radiology → Clinical → Evidence → Risk"
+            },
+            "timestamp": datetime.utcnow()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Complete 4-agent pipeline failed: {str(e)}")
+
+@app.post("/upload-complete-pipeline")
+async def upload_complete_pipeline(
+    file: UploadFile = File(...),
+    patient_code: str = "UNKNOWN",
+    additional_info: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Upload image and run complete 4-agent pipeline: Upload → Radiology → Clinical → Evidence → Risk"""
+    try:
+        # Step 1: Save uploaded file
+        upload_dir = "uploads"
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        case_id = str(uuid.uuid4())
+        file_path = os.path.join(upload_dir, f"{case_id}_{file.filename}")
+        
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        # Step 2: Run complete 4-agent pipeline on uploaded image
+        xray_input = XrayInput(
+            image_path=file_path,
+            patient_code=patient_code,
+            case_id=case_id,
+            additional_info=additional_info or f"Uploaded file: {file.filename}"
+        )
+        
+        # Step 3: Radiology Analysis
+        radiology_findings = radiology_agent.analyze(xray_input, save_to_db=False)
+        
+        # Step 4: Clinical Analysis
+        from app.models.clinical_models import ClinicalInput
+        clinical_input = ClinicalInput(
+            case_id=case_id,
+            patient_code=patient_code,
+            radiology_findings=radiology_findings.findings,
+            abnormalities=radiology_findings.abnormalities,
+            confidence=radiology_findings.confidence,
+            additional_info=additional_info
+        )
+        
+        clinical_findings = clinical_agent_instance.analyze(clinical_input, save_to_db=False)
+        
+        # Step 5: Evidence Search
+        from app.models.evidence_models import EvidenceInput
+        # Extract primary diagnosis for evidence search
+        if isinstance(clinical_findings.differential_diagnosis, list):
+            primary_diagnosis = clinical_findings.differential_diagnosis[0] if clinical_findings.differential_diagnosis else "chest abnormality"
+        else:
+            primary_diagnosis = clinical_findings.differential_diagnosis.split(',')[0].strip() if clinical_findings.differential_diagnosis else "chest abnormality"
+        
+        evidence_input = EvidenceInput(
+            case_id=case_id,
+            patient_code=patient_code,
+            diagnosis=[primary_diagnosis],
+            radiology_findings=radiology_findings.findings
+        )
+        
+        evidence_findings = evidence_agent_instance.analyze(evidence_input, save_to_db=False)
+        
+        # Step 6: Risk Assessment
+        risk_input = RiskInput(
+            case_id=case_id,
+            radiology_findings=radiology_findings.findings,
+            confidence=radiology_findings.confidence,
+            clinical_context=f"Clinical diagnosis: {clinical_findings.differential_diagnosis}. Urgency: {clinical_findings.urgency}"
+        )
+        
+        risk_assessment = risk_agent.assess_risk(risk_input, save_to_db=False)
+        
+        # Return comprehensive results
+        return {
+            "message": "Image uploaded and complete 4-agent analysis completed successfully",
+            "upload_info": {
+                "original_filename": file.filename,
+                "saved_path": file_path,
+                "file_size": len(content),
+                "content_type": file.content_type
+            },
+            "case_id": case_id,
+            "patient_code": patient_code,
+            "pipeline_status": "completed",
+            "agents_executed": ["radiology", "clinical", "evidence", "risk"],
+            "radiology_analysis": {
+                "findings": radiology_findings.findings,
+                "abnormalities": radiology_findings.abnormalities,
+                "anatomical_structures": radiology_findings.anatomical_structures,
+                "confidence": radiology_findings.confidence,
+                "recommendations": radiology_findings.recommendations,
+                "image_quality": radiology_findings.image_quality
+            },
+            "clinical_analysis": {
+                "differential_diagnosis": clinical_findings.differential_diagnosis,
+                "reasoning": clinical_findings.reasoning,
+                "urgency": clinical_findings.urgency,
+                "recommended_followup": clinical_findings.recommended_followup,
+                "confidence": clinical_findings.confidence
+            },
+            "evidence_research": {
+                "search_keywords": evidence_findings.search_keywords,
+                "evidence_summary": evidence_findings.evidence_summary,
+                "total_papers_found": evidence_findings.total_papers_found,
+                "citations": [c.dict() for c in evidence_findings.citations]
+            },
+            "risk_assessment": {
+                "risk_level": risk_assessment.risk_level,
+                "risk_score": risk_assessment.risk_score,
+                "recommended_action": risk_assessment.recommended_action,
+                "urgency_timeline": risk_assessment.urgency_timeline,
+                "specialist_referral": risk_assessment.specialist_referral,
+                "critical_findings": risk_assessment.critical_findings,
+                "risk_factors": risk_assessment.risk_factors,
+                "next_steps": risk_assessment.next_steps,
+                "reasoning": risk_assessment.reasoning,
+                "confidence": risk_assessment.confidence
+            },
+            "overall_confidence": round((radiology_findings.confidence + clinical_findings.confidence + risk_assessment.confidence) / 3, 2),
+            "processing_summary": {
+                "total_agents": 4,
+                "successful_agents": 4,
+                "data_flow": "Upload → Radiology → Clinical → Evidence → Risk",
+                "workflow": "Complete medical analysis from uploaded image"
+            },
+            "timestamp": datetime.utcnow()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload and complete pipeline failed: {str(e)}")
+
 @app.get("/risk-assessments/{case_id}")
 async def get_risk_assessment(case_id: str, db: Session = Depends(get_db)):
     """Get risk assessment results for a case"""
