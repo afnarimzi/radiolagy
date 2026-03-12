@@ -19,8 +19,10 @@ from app.database.database import get_db
 from app.database.crud import RadiologyDB
 from app.agents.radiology_agent import RadiologyAgent
 from app.agents.risk_agent import RiskAssessmentAgent
+from app.agents.chairman_agent import chairman_agent
 from app.models.radiology_models import XrayInput, RadiologyFindings
 from app.models.risk_models import RiskInput, RiskAssessment
+from app.models.chairman_models import ChairmanInput, ChairmanOutput
 from app.api.models import (
     PatientCreate, PatientResponse, 
     CaseResponse, AnalysisRequest, AnalysisResponse,
@@ -529,6 +531,203 @@ async def upload_complete_pipeline(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload and complete pipeline failed: {str(e)}")
+
+@app.post("/upload-complete-pipeline-with-chairman")
+async def upload_complete_pipeline_with_chairman(
+    file: UploadFile = File(...),
+    patient_code: str = "UNKNOWN",
+    additional_info: Optional[str] = None,
+    patient_history: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Upload image and run complete 5-agent pipeline: Upload → Radiology → Clinical → Evidence → Risk → Chairman"""
+    try:
+        # Step 1: Save uploaded file
+        upload_dir = "uploads"
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        case_id = str(uuid.uuid4())
+        file_path = os.path.join(upload_dir, f"{case_id}_{file.filename}")
+        
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        # Step 2: Run complete 4-agent pipeline on uploaded image
+        xray_input = XrayInput(
+            image_path=file_path,
+            patient_code=patient_code,
+            case_id=case_id,
+            additional_info=additional_info or f"Uploaded file: {file.filename}"
+        )
+        
+        # Step 3: Radiology Analysis
+        radiology_findings = radiology_agent.analyze(xray_input, save_to_db=False)
+        
+        # Step 4: Clinical Analysis
+        from app.models.clinical_models import ClinicalInput
+        clinical_input = ClinicalInput(
+            case_id=case_id,
+            patient_code=patient_code,
+            radiology_findings=radiology_findings.findings,
+            abnormalities=radiology_findings.abnormalities,
+            confidence=radiology_findings.confidence,
+            additional_info=additional_info
+        )
+        
+        clinical_findings = clinical_agent_instance.analyze(clinical_input, save_to_db=False)
+        
+        # Step 5: Evidence Search
+        from app.models.evidence_models import EvidenceInput
+        # Extract primary diagnosis for evidence search
+        if isinstance(clinical_findings.differential_diagnosis, list):
+            primary_diagnosis = clinical_findings.differential_diagnosis[0] if clinical_findings.differential_diagnosis else "chest abnormality"
+        else:
+            primary_diagnosis = clinical_findings.differential_diagnosis.split(',')[0].strip() if clinical_findings.differential_diagnosis else "chest abnormality"
+        
+        evidence_input = EvidenceInput(
+            case_id=case_id,
+            patient_code=patient_code,
+            diagnosis=[primary_diagnosis],
+            radiology_findings=radiology_findings.findings
+        )
+        
+        evidence_findings = evidence_agent_instance.analyze(evidence_input, save_to_db=False)
+        
+        # Step 6: Risk Assessment
+        risk_input = RiskInput(
+            case_id=case_id,
+            radiology_findings=radiology_findings.findings,
+            confidence=radiology_findings.confidence,
+            clinical_context=f"Clinical diagnosis: {clinical_findings.differential_diagnosis}. Urgency: {clinical_findings.urgency}"
+        )
+        
+        risk_assessment = risk_agent.assess_risk(risk_input, save_to_db=False)
+        
+        # Step 7: Chairman Analysis - Synthesize all findings
+        chairman_input = ChairmanInput(
+            case_id=case_id,
+            patient_code=patient_code,
+            radiology_findings={
+                "findings": radiology_findings.findings,
+                "abnormalities": radiology_findings.abnormalities,
+                "anatomical_structures": radiology_findings.anatomical_structures,
+                "confidence": radiology_findings.confidence,
+                "recommendations": radiology_findings.recommendations,
+                "image_quality": radiology_findings.image_quality
+            },
+            clinical_findings={
+                "differential_diagnosis": clinical_findings.differential_diagnosis,
+                "reasoning": clinical_findings.reasoning,
+                "urgency": clinical_findings.urgency,
+                "recommended_followup": clinical_findings.recommended_followup,
+                "confidence": clinical_findings.confidence
+            },
+            evidence_findings={
+                "search_keywords": evidence_findings.search_keywords,
+                "evidence_summary": evidence_findings.evidence_summary,
+                "total_papers_found": evidence_findings.total_papers_found,
+                "citations": [c.dict() for c in evidence_findings.citations]
+            },
+            risk_findings={
+                "risk_level": risk_assessment.risk_level,
+                "risk_score": risk_assessment.risk_score,
+                "recommended_action": risk_assessment.recommended_action,
+                "urgency_timeline": risk_assessment.urgency_timeline,
+                "specialist_referral": risk_assessment.specialist_referral,
+                "critical_findings": risk_assessment.critical_findings,
+                "risk_factors": risk_assessment.risk_factors,
+                "next_steps": risk_assessment.next_steps,
+                "reasoning": risk_assessment.reasoning,
+                "confidence": risk_assessment.confidence
+            },
+            patient_history=patient_history,
+            additional_notes=additional_info
+        )
+        
+        chairman_report = chairman_agent.analyze(chairman_input, save_to_db=True)
+        
+        # Return comprehensive results including Chairman's final report
+        return {
+            "message": "Image uploaded and complete 5-agent analysis with Chairman report completed successfully",
+            "upload_info": {
+                "original_filename": file.filename,
+                "saved_path": file_path,
+                "file_size": len(content),
+                "content_type": file.content_type
+            },
+            "case_id": case_id,
+            "patient_code": patient_code,
+            "pipeline_status": "completed",
+            "agents_executed": ["radiology", "clinical", "evidence", "risk", "chairman"],
+            
+            # Individual Agent Results
+            "radiology_analysis": {
+                "findings": radiology_findings.findings,
+                "abnormalities": radiology_findings.abnormalities,
+                "anatomical_structures": radiology_findings.anatomical_structures,
+                "confidence": radiology_findings.confidence,
+                "recommendations": radiology_findings.recommendations,
+                "image_quality": radiology_findings.image_quality
+            },
+            "clinical_analysis": {
+                "differential_diagnosis": clinical_findings.differential_diagnosis,
+                "reasoning": clinical_findings.reasoning,
+                "urgency": clinical_findings.urgency,
+                "recommended_followup": clinical_findings.recommended_followup,
+                "confidence": clinical_findings.confidence
+            },
+            "evidence_research": {
+                "search_keywords": evidence_findings.search_keywords,
+                "evidence_summary": evidence_findings.evidence_summary,
+                "total_papers_found": evidence_findings.total_papers_found,
+                "citations": [c.dict() for c in evidence_findings.citations]
+            },
+            "risk_assessment": {
+                "risk_level": risk_assessment.risk_level,
+                "risk_score": risk_assessment.risk_score,
+                "recommended_action": risk_assessment.recommended_action,
+                "urgency_timeline": risk_assessment.urgency_timeline,
+                "specialist_referral": risk_assessment.specialist_referral,
+                "critical_findings": risk_assessment.critical_findings,
+                "risk_factors": risk_assessment.risk_factors,
+                "next_steps": risk_assessment.next_steps,
+                "reasoning": risk_assessment.reasoning,
+                "confidence": risk_assessment.confidence
+            },
+            
+            # Chairman's Final Report
+            "chairman_report": {
+                "executive_summary": chairman_report.executive_summary,
+                "primary_diagnosis": chairman_report.primary_diagnosis,
+                "differential_diagnoses": chairman_report.differential_diagnoses,
+                "radiology_synthesis": chairman_report.radiology_synthesis,
+                "clinical_synthesis": chairman_report.clinical_synthesis,
+                "evidence_synthesis": chairman_report.evidence_synthesis,
+                "risk_synthesis": chairman_report.risk_synthesis,
+                "immediate_actions": chairman_report.immediate_actions,
+                "follow_up_plan": chairman_report.follow_up_plan,
+                "specialist_referrals": chairman_report.specialist_referrals,
+                "confidence_level": chairman_report.confidence_level,
+                "consensus_score": chairman_report.consensus_score,
+                "urgency_level": chairman_report.urgency_level,
+                "chairman_reasoning": chairman_report.chairman_reasoning,
+                "quality_flags": chairman_report.quality_flags,
+                "report_generated_at": chairman_report.report_generated_at
+            },
+            
+            "overall_confidence": chairman_report.confidence_level,
+            "processing_summary": {
+                "total_agents": 5,
+                "successful_agents": 5,
+                "data_flow": "Upload → Radiology → Clinical → Evidence → Risk → Chairman",
+                "workflow": "Complete medical analysis with Chairman's final report"
+            },
+            "timestamp": datetime.utcnow()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload and complete 5-agent pipeline failed: {str(e)}")
 
 @app.get("/risk-assessments/{case_id}")
 async def get_risk_assessment(case_id: str, db: Session = Depends(get_db)):

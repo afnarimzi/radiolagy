@@ -1,9 +1,11 @@
 """
 Risk Assessment Agent using Google Gemini AI
 Analyzes radiology findings to assess patient risk levels and recommend actions
+Enhanced with performance tracking
 """
 import os
 import json
+import time
 from typing import Dict, Any
 from datetime import datetime
 import google.generativeai as genai
@@ -12,6 +14,7 @@ from app.models.risk_models import RiskInput, RiskAssessment, RiskLevel, ActionT
 from app.database.crud import RadiologyDB
 from app.database.database import get_db
 from app.database.models import PatientOutput
+from app.utils.simple_timer import simple_timer
 
 class RiskAssessmentAgent:
     """
@@ -234,6 +237,7 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
         except Exception as e:
             print(f"Error saving risk assessment to database: {str(e)}")
             return False
+    @simple_timer.time_agent("Risk Agent")
     def assess_risk(self, risk_input: RiskInput, save_to_db: bool = True) -> RiskAssessment:
         """
         Assess patient risk using Gemini AI

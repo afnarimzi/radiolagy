@@ -5,9 +5,11 @@ Clinical Agent - To be implemented
 # TODO: Implement Clinical Agent for clinical decision support
 """
 Clinical Reasoning Agent - Differential diagnosis from radiology findings
+Enhanced with performance tracking
 """
 import os
 import json
+import time
 from groq import Groq
 from datetime import datetime
 from dotenv import load_dotenv
@@ -15,14 +17,16 @@ from dotenv import load_dotenv
 from app.database.database import get_db
 from app.database.crud import RadiologyDB
 from app.models.clinical_models import ClinicalInput, ClinicalFindings
+from app.utils.simple_timer import simple_timer
 
 load_dotenv()
 
 class ClinicalAgent:
     def __init__(self):
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        self.model = "llama-3.3-70b-versatile"
+        self.model = "llama-3.1-8b-instant"  # Stable GROQ model
 
+    @simple_timer.time_agent("Clinical Agent")
     def analyze(self, clinical_input: ClinicalInput, save_to_db: bool = True) -> ClinicalFindings:
         """Run clinical reasoning on radiology findings"""
 

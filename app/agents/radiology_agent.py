@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models.radiology_models import XrayInput, RadiologyFindings, RadiologyError
 from app.database.database import get_db
+from app.utils.simple_timer import simple_timer
 
 # Load environment variables
 load_dotenv()
@@ -31,7 +32,7 @@ class RadiologyAgent:
         
         genai.configure(api_key=api_key)
         
-        # Use Gemini 2.5 Flash (supports vision)
+        # Use Gemini 2.5 Flash (supports vision and is available)
         self.model = genai.GenerativeModel("gemini-2.5-flash")
         self.agent_type = "radiology"
         
@@ -84,6 +85,7 @@ Be thorough, specific, and use proper medical terminology. If you see abnormalit
         except Exception as e:
             raise ValueError(f"Failed to load image: {str(e)}")
     
+    @simple_timer.time_agent("Radiology Agent")
     def analyze(self, xray_input: XrayInput, save_to_db: bool = True) -> RadiologyFindings:
         """
         Analyze X-ray image and return structured findings
@@ -108,8 +110,8 @@ Be thorough, specific, and use proper medical terminology. If you see abnormalit
             response = self.model.generate_content(
                 [prompt, image],
                 generation_config=genai.types.GenerationConfig(
-                    temperature=0.2,  # Lower temperature for consistent medical analysis
-                    max_output_tokens=2000,  # Increased for detailed reports
+                    temperature=0.2,
+                    max_output_tokens=2000,
                     candidate_count=1
                 )
             )

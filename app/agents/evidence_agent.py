@@ -5,9 +5,11 @@ Evidence Agent - To be implemented
 # TODO: Implement Evidence Agent for literature search and research
 """
 Evidence Validation Agent - PubMed RAG pipeline
+Enhanced with performance tracking
 """
 import os
 import json
+import time
 import requests
 from groq import Groq
 from dotenv import load_dotenv
@@ -15,6 +17,7 @@ from dotenv import load_dotenv
 from app.database.database import get_db
 from app.database.crud import RadiologyDB
 from app.models.evidence_models import EvidenceInput, EvidenceFindings, Citation
+from app.utils.simple_timer import simple_timer
 
 load_dotenv()
 
@@ -24,8 +27,9 @@ PUBMED_SUMMARY_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcg
 class EvidenceAgent:
     def __init__(self):
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        self.model = "llama-3.3-70b-versatile"
+        self.model = "llama-3.1-8b-instant"  # Stable GROQ model
 
+    @simple_timer.time_agent("Evidence Agent")
     def analyze(self, evidence_input: EvidenceInput, save_to_db: bool = True) -> EvidenceFindings:
         """Search PubMed and summarise evidence for diagnosis"""
 
