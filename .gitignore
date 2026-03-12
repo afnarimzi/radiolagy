@@ -48,6 +48,9 @@ Thumbs.db
 *.log
 logs/
 
+# Uploads (user uploaded files)
+uploads/
+
 # Test coverage
 htmlcov/
 .coverage
