@@ -13,15 +13,6 @@ A comprehensive medical AI system that orchestrates 5 specialized AI agents usin
 4. **⚠️ Risk Agent** - Risk assessment using Google Gemini
 5. **👔 Chairman Agent** - Final report synthesis using GROQ Llama 3.1
 
-### 🔄 LangGraph Orchestration
-
-
-┌─────────────┐    ┌─────────────────────────┐    ┌─────────────┐
-│  Radiology  │───▶│    Parallel Stage       │───▶│  Chairman   │
-│   Agent     │    │ Clinical + Evidence +   │    │   Agent     │
-│             │    │     Risk Agents         │    │             │
-└─────────────┘    └─────────────────────────┘    └─────────────┘
-
 
 ## 📁 Project Structure
 
