@@ -1,254 +1,298 @@
-# Multi-Agent AI Medical Analysis System
+# 🏥 Multi-Agent Radiology AI System
 
-A collaborative multi-agent system for medical image analysis and risk assessment using AI models.
+> An end-to-end multi-agent AI pipeline for automated chest X-ray analysis, clinical reasoning, evidence retrieval, risk assessment, and final report synthesis.
+
+---
+
+## 📌 Overview
+
+This system uses **5 specialized AI agents** orchestrated by **LangGraph** to analyze chest X-ray images and produce comprehensive medical reports. Each agent operates independently and communicates through a shared state, with results persisted to a PostgreSQL database.
+
+```
+Upload X-ray
+     │
+     ▼
+┌─────────────────────┐
+│   Radiology Agent   │  ← Stage 1: Image analysis (Gemini Vision)
+└─────────────────────┘
+     │
+     ▼ (parallel fan-out)
+┌──────────┐  ┌──────────┐  ┌──────────┐
+│ Clinical │  │ Evidence │  │  Risk    │  ← Stage 2: Parallel analysis
+│  Agent   │  │  Agent   │  │  Agent   │
+└──────────┘  └──────────┘  └──────────┘
+     │              │              │
+     └──────────────┴──────────────┘
+                    │
+                    ▼
+          ┌──────────────────┐
+          │  Chairman Agent  │  ← Stage 3: Synthesis & final report
+          └──────────────────┘
+                    │
+                    ▼
+           Final Medical Report
+              + PostgreSQL DB
+```
+
+---
+
+## 🤖 Agents
+
+| Agent | Model | Role | Status |
+|-------|-------|------|--------|
+| **Radiology Agent** | Gemini Vision (→ MedRAX) | X-ray image analysis, abnormality detection | ✅ |
+| **Clinical Agent** | Groq Llama 3.3 70B (→ MedGemma 27B) | Differential diagnosis, urgency assessment | ✅ |
+| **Evidence Agent** | Groq + PubMed API (→ RAGFlow) | Literature search, evidence-based synthesis | ✅ |
+| **Risk Agent** | Gemini (→ DeepSeek-R1) | Risk scoring, specialist referral | ✅ |
+| **Chairman Agent** | Gemini (→ GPT-4o / Claude) | Multi-agent synthesis, final report | ✅ |
+
+> 🔬 Current models are prototype substitutes. Production models (MedRAX, MedGemma 27B, DeepSeek-R1) will replace them when GPU infrastructure is available.
+
+---
 
 ## 🏗️ Project Structure
 
 ```
+radiolagy/
 ├── app/
-│   ├── agents/           # AI Agent implementations
-│   │   ├── radiology_agent.py    # ✅ Radiology analysis (Gemini Vision)
-│   │   ├── risk_agent.py         # ✅ Risk assessment (Gemini)
-│   │   ├── clinical_agent.py     # 🚧 Placeholder for clinical analysis
-│   │   └── evidence_agent.py     # 🚧 Placeholder for evidence synthesis
-│   ├── models/           # Data models for each agent
-│   │   ├── radiology_models.py   # ✅ Radiology data structures
-│   │   ├── risk_models.py        # ✅ Risk assessment models
-│   │   ├── clinical_models.py    # 🚧 Placeholder for clinical models
-│   │   └── evidence_models.py    # 🚧 Placeholder for evidence models
-│   ├── database/         # Database layer
-│   │   ├── models.py            # Database schema
-│   │   ├── crud.py              # Database operations
-│   │   ├── database.py          # Database connection
-│   │   └── init_db.py           # Database initialization
-│   └── api/              # FastAPI REST endpoints
-│       ├── main.py              # API server
-│       └── models.py            # API request/response models
-├── test_images/          # Sample medical images for testing
-├── main.py              # Main application entry point
-├── start_api.py         # API server launcher
-├── setup_database.py    # Database setup script
-├── view_reports.py      # Database viewer utility
-├── requirements.txt     # Python dependencies
-└── .env                 # Environment variables (API keys)
+│   ├── agents/
+│   │   ├── radiology_agent.py      # Gemini Vision X-ray analysis
+│   │   ├── clinical_agent.py       # Groq clinical reasoning
+│   │   ├── evidence_agent.py       # Groq + PubMed evidence retrieval
+│   │   ├── risk_agent.py           # Gemini risk assessment
+│   │   └── chairman_agent.py       # Final synthesis agent
+│   ├── models/
+│   │   ├── radiology_models.py
+│   │   ├── clinical_models.py
+│   │   ├── evidence_models.py
+│   │   ├── risk_models.py
+│   │   └── chairman_models.py
+│   ├── pipeline/
+│   │   └── langgraph_pipeline.py   # LangGraph orchestration
+│   ├── api/
+│   │   ├── main.py                 # FastAPI server
+│   │   └── models.py               # API request/response models
+│   ├── database/
+│   │   ├── models.py               # SQLAlchemy schema
+│   │   ├── crud.py                 # Database operations
+│   │   ├── database.py             # DB connection
+│   │   └── init_db.py
+│   └── utils/
+│       └── simple_timer.py         # Performance timing decorator
+├── test_images/                    # Sample X-ray images
+├── main.py                         # Single-run pipeline entry point
+├── start_api.py                    # FastAPI server launcher
+├── test_langgraph.py               # LangGraph pipeline test
+├── test_detailed_timing.py         # Performance benchmarking
+├── view_reports.py                 # CLI database viewer
+├── setup_database.py               # Database initialization
+├── requirements.txt
+└── .env                            # API keys and config
 ```
+
+---
 
 ## 🚀 Quick Start
 
-### 1. Clone and Setup
+### 1. Clone the Repository
 ```bash
-git clone <repository-url>
-cd <project-name>
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+git clone https://github.com/afnarimzi/radiolagy.git
+cd radiolagy
 ```
 
-### 2. Configure Environment
-Create/update `.env` file with your API keys:
-```env
-# Radiology Agent (Gemini Vision)
-GOOGLE_API_KEY=your_radiology_gemini_key_here
+### 2. Create Virtual Environment
+```bash
+python -m venv venv
 
-# Risk Agent (Gemini)
+# Windows
+venv\Scripts\activate
+
+# Linux / macOS
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+```bash
+pip install -r requirements.txt
+pip install langgraph langchain langchain-core
+```
+
+### 4. Configure Environment Variables
+Create a `.env` file in the root directory:
+```env
+# Gemini API (Radiology + Risk + Chairman agents)
+GOOGLE_API_KEY=your_google_api_key_here
 RISK_AGENT_API_KEY=your_risk_gemini_key_here
 
-# Database
-DATABASE_URL=sqlite:///./radiology_ai.db
+# Groq API (Clinical + Evidence agents)
+GROQ_API_KEY=your_groq_api_key_here
 
-# Add your agent API keys here:
-# CLINICAL_AGENT_API_KEY=your_clinical_key_here
-# EVIDENCE_AGENT_API_KEY=your_evidence_key_here
+# PostgreSQL Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=radiology_db
+DB_USER=postgres
+DB_PASSWORD=your_password_here
+
+# App Config
+APP_NAME=Multi-Agent AI Medical System
+DEBUG=True
 ```
 
-### 3. Initialize Database
+> Get free API keys: [Google AI Studio](https://aistudio.google.com/app/apikey) | [Groq Console](https://console.groq.com)
+
+### 5. Initialize Database
 ```bash
 python setup_database.py
 ```
 
-### 4. Run Analysis
+### 6. Add Test Images
+Place chest X-ray images (`.jpg`, `.jpeg`, `.png`) in the `test_images/` folder.
+
+---
+
+## ▶️ Running the System
+
+### Option 1 — Single Run (All 5 Agents)
 ```bash
-# Analyze test images with existing agents
 python main.py
-
-# Start API server
-python start_api.py
-
-# View results
-python view_reports.py detailed
 ```
+Processes all images in `test_images/`, runs all agents, prints combined report.
 
-## 🤖 Implemented Agents
-
-### ✅ Radiology Agent
-- **File**: `app/agents/radiology_agent.py`
-- **Model**: Google Gemini Vision Pro
-- **Function**: Analyzes medical images (X-rays, CT scans)
-- **Output**: Abnormalities, findings, recommendations
-
-### ✅ Risk Agent
-- **File**: `app/agents/risk_agent.py`
-- **Model**: Google Gemini Pro
-- **Function**: Assesses medical risk from radiology findings
-- **Output**: Risk level, urgency, next steps, specialist referrals
-
-## 🚧 Placeholder Agents (Ready for Implementation)
-
-### Clinical Agent
-- **File**: `app/agents/clinical_agent.py` (placeholder)
-- **Models**: `app/models/clinical_models.py` (placeholder)
-- **Purpose**: Clinical decision support and treatment recommendations
-
-### Evidence Agent
-- **File**: `app/agents/evidence_agent.py` (placeholder)
-- **Models**: `app/models/evidence_models.py` (placeholder)
-- **Purpose**: Evidence-based medicine synthesis and literature review
-
-## 📊 Database Schema
-
-The system uses a unified database with these tables:
-- `patients` - Patient information
-- `patient_inputs` - Input data (images, clinical info)
-- `patient_outputs` - Agent analysis results
-- `agent_threads` - Multi-agent conversation tracking
-- `medical_reports` - Formatted medical reports
-
-Each agent saves results with `agent_type` field for identification.
-
-## 🔧 Adding New Agents
-
-### 1. Implement Agent Class
-Create your agent in `app/agents/your_agent.py`:
-```python
-from app.models.your_models import YourRequest, YourResponse
-from app.database.models import PatientOutput
-import uuid
-from datetime import datetime
-
-class YourAgent:
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-    
-    def analyze(self, request: YourRequest) -> YourResponse:
-        # Your AI model implementation
-        pass
-    
-    def save_to_database(self, db, case_id: str, response: YourResponse):
-        # Save results to database
-        output = PatientOutput(
-            case_id=case_id,
-            agent_type="your_agent",  # Unique identifier
-            output_data=response.dict(),
-            confidence=response.confidence,
-            processing_time=response.processing_time,
-            created_at=datetime.utcnow()
-        )
-        db.add(output)
-        db.commit()
-```
-
-### 2. Define Data Models
-Create models in `app/models/your_models.py`:
-```python
-from pydantic import BaseModel
-from typing import List, Optional
-
-class YourRequest(BaseModel):
-    # Input data structure
-    pass
-
-class YourResponse(BaseModel):
-    # Output data structure
-    confidence: float
-    processing_time: Optional[float] = None
-```
-
-### 3. Update Main Pipeline
-Add your agent to `main.py`:
-```python
-from app.agents.your_agent import YourAgent
-
-# Initialize your agent
-your_agent = YourAgent(api_key=os.getenv("YOUR_AGENT_API_KEY"))
-
-# Add to analysis pipeline
-your_result = your_agent.analyze(your_request)
-your_agent.save_to_database(db, case_id, your_result)
-```
-
-### 4. Update Report Viewer
-Add display logic in `view_reports.py`:
-```python
-elif output.agent_type == 'your_agent':
-    display_your_agent_report(output)
-```
-
-## 🔍 Viewing Results
-
+### Option 2 — API Server (Swagger UI)
 ```bash
-# View all agent reports (summary)
+python start_api.py
+```
+Then open: **http://127.0.0.1:8000/docs**
+
+### Option 3 — LangGraph Pipeline Test
+```bash
+python test_langgraph.py
+```
+
+### Option 4 — View Database Reports
+```bash
 python view_reports.py
-
-# View detailed reports with full analysis
 python view_reports.py detailed
-
-# View specific patient reports
-python view_reports.py patient PATIENT_001
-
-# View database statistics
 python view_reports.py stats
 ```
 
+---
+
 ## 🌐 API Endpoints
 
-Start the API server: `python start_api.py`
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/upload-complete-pipeline-with-chairman` | **Upload image → run all 5 agents** |
+| `POST` | `/upload-analyze` | Upload and run radiology analysis only |
+| `POST` | `/analyze-complete-pipeline` | Run full pipeline on existing case |
+| `POST` | `/assess-risk` | Risk assessment only |
+| `POST` | `/clinical-agent` | Clinical analysis only |
+| `POST` | `/evidence-agent` | Evidence search only |
+| `GET`  | `/reports` | List all recent reports |
+| `GET`  | `/reports/{case_id}` | Get full report by case ID |
+| `GET`  | `/cases` | List all cases |
+| `GET`  | `/cases/{case_id}` | Get specific case details |
+| `GET`  | `/health` | System health check |
 
-### General Endpoints
-- `GET /` - API information and status
-- `GET /health` - Health check for all agents
-- `GET /stats` - Database statistics
+---
 
-### Patient Management
-- `POST /patients` - Create new patient
-- `GET /patients/{patient_code}` - Get patient info
-- `GET /patients/{patient_code}/cases` - Get patient cases
+## ⚙️ LangGraph Orchestration
 
-### Radiology Analysis
-- `POST /analyze` - Analyze X-ray image
-- `POST /upload-analyze` - Upload and analyze image
-- `GET /radiology-results/{case_id}` - Get radiology results
+The pipeline uses **LangGraph StateGraph** for orchestration with two key optimizations:
 
-### Risk Assessment
-- `POST /assess-risk` - Assess medical risk from findings
-- `POST /analyze-and-assess` - Complete pipeline (radiology + risk)
-- `GET /risk-assessments/{case_id}` - Get risk assessment results
-- `GET /pending-risk-cases` - Cases needing risk assessment
+**Level 1 — True Parallel Execution**
+```
+Stage 2 agents run simultaneously via asyncio.gather():
+  Clinical (1-2s) ─┐
+  Evidence (3-5s) ──┤ → total = max(all) not sum(all)
+  Risk     (10s)  ─┘
+```
 
-### Case Management
-- `GET /cases` - List all cases
-- `GET /cases/{case_id}` - Get specific case details
-- `GET /pending-clinical-cases` - Cases needing clinical analysis
+**Level 2 — Retry with Exponential Backoff**
+```
+Rate limit (429) → wait 30s → retry (up to 3 times)
+Timeout          → wait 2s  → retry (up to 3 times)
+```
 
-### Reports
-- `GET /reports/{case_id}` - Get formatted medical report
-- `GET /reports` - List recent reports
+---
 
-## 🤝 Collaboration Notes
+## 🗄️ Database Schema
 
-- Each agent operates independently and saves to the same database
-- Use unique `agent_type` identifiers for your agents
-- Follow the existing pattern for database integration
-- Add your API keys to `.env` file
-- Test with sample data before processing real medical images
+| Table | Description |
+|-------|-------------|
+| `patients` | Patient information |
+| `patient_inputs` | Input data (image path, clinical context) |
+| `patient_outputs` | Agent results (linked by `case_id`) |
+| `agent_threads` | Multi-agent conversation tracking |
+| `medical_reports` | Formatted final reports |
 
-## 📝 Current Status
+All agent results are linked by a shared `case_id` (UUID), enabling full traceability across the pipeline.
 
-- ✅ Database schema and CRUD operations
-- ✅ Radiology agent with Gemini Vision
-- ✅ Risk assessment agent with Gemini
-- ✅ FastAPI server with endpoints
-- ✅ Multi-agent report viewer
-- 🚧 Clinical agent (placeholder ready)
-- 🚧 Evidence agent (placeholder ready)
+---
 
-Ready for collaborative development! 🚀
+## 📊 Performance (Prototype)
+
+| Stage | Agent | Avg Time |
+|-------|-------|----------|
+| Stage 1 | Radiology (Gemini Vision) | ~13-17s |
+| Stage 2 | Clinical + Evidence + Risk (parallel) | ~17s |
+| Stage 3 | Chairman | ~2s |
+| **Total** | **End-to-end pipeline** | **~33s** |
+
+
+
+## 🗺️ Roadmap
+
+- [x] 5-agent pipeline implementation
+- [x] FastAPI REST endpoints
+- [x] LangGraph orchestration with parallel execution
+- [x] Retry logic and timeout handling
+- [x] PostgreSQL database integration
+- [ ] LangGraph HITL (Human-in-the-Loop) checkpoint
+- [ ] Redis caching for repeated analyses
+- [ ] SSE streaming for real-time progress
+- [ ] MedRAX integration (GPU required)
+- [ ] MedGemma 27B integration (GPU required)
+- [ ] DeepSeek-R1 70B integration (GPU required)
+- [ ] React frontend dashboard
+- [ ] Docker containerization
+
+
+
+## 📋 Requirements
+
+```
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+python-dotenv
+pydantic
+groq
+requests
+python-multipart
+pillow
+google-generativeai
+langgraph
+langchain
+langchain-core
+```
+
+---
+
+## ⚠️ Disclaimer
+
+This system is a **research prototype** and is **not intended for clinical use**. All outputs must be reviewed by a qualified medical professional before any clinical decision is made. The system does not replace radiologist judgment.
+
+---
+
+## 📄 License
+
+This project is developed as part of an AI/ML internship research program.
+
+---
+
+<div align="center">
+  <strong>Built with LangGraph · FastAPI · Gemini · Groq · PostgreSQL</strong>
+</div>
