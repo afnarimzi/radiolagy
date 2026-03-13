@@ -27,7 +27,7 @@ class ClinicalAgent:
         self.model = "llama-3.1-8b-instant"  # Stable GROQ model
 
     @simple_timer.time_agent("Clinical Agent")
-    def analyze(self, clinical_input: ClinicalInput, save_to_db: bool = True) -> ClinicalFindings:
+    async def analyze(self, clinical_input: ClinicalInput, save_to_db: bool = True) -> ClinicalFindings:
         """Run clinical reasoning on radiology findings"""
 
         # build prompt

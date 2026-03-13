@@ -238,7 +238,7 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
             print(f"Error saving risk assessment to database: {str(e)}")
             return False
     @simple_timer.time_agent("Risk Agent")
-    def assess_risk(self, risk_input: RiskInput, save_to_db: bool = True) -> RiskAssessment:
+    async def assess_risk(self, risk_input: RiskInput, save_to_db: bool = True) -> RiskAssessment:
         """
         Assess patient risk using Gemini AI
         

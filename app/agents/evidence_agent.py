@@ -10,7 +10,8 @@ Enhanced with performance tracking
 import os
 import json
 import time
-import requests
+import aiohttp
+import asyncio
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -30,7 +31,7 @@ class EvidenceAgent:
         self.model = "llama-3.1-8b-instant"  # Stable GROQ model
 
     @simple_timer.time_agent("Evidence Agent")
-    def analyze(self, evidence_input: EvidenceInput, save_to_db: bool = True) -> EvidenceFindings:
+    async def analyze(self, evidence_input: EvidenceInput, save_to_db: bool = True) -> EvidenceFindings:
         """Search PubMed and summarise evidence for diagnosis"""
 
         # Step 1: extract keywords
@@ -40,10 +41,10 @@ class EvidenceAgent:
         )
 
         # Step 2: search PubMed
-        pmids = self._search_pubmed(keywords)
+        pmids = await self._search_pubmed(keywords)
 
         # Step 3: fetch paper details
-        papers = self._fetch_abstracts(pmids)
+        papers = await self._fetch_abstracts(pmids)
 
         # Step 4: summarise
         summary = self._summarise_evidence(papers, evidence_input.diagnosis)
@@ -79,7 +80,7 @@ Return ONLY a short search string (max 6 words). Nothing else."""
         )
         return response.choices[0].message.content.strip()
 
-    def _search_pubmed(self, query: str, max_results: int = 5) -> list:
+    async def _search_pubmed(self, query: str, max_results: int = 5) -> list:
         params = {
             "db": "pubmed",
             "term": query,
@@ -87,10 +88,12 @@ Return ONLY a short search string (max 6 words). Nothing else."""
             "retmode": "json",
             "sort": "relevance"
         }
-        response = requests.get(PUBMED_SEARCH_URL, params=params)
-        return response.json().get("esearchresult", {}).get("idlist", [])
+        async with aiohttp.ClientSession() as session:
+            async with session.get(PUBMED_SEARCH_URL, params=params) as response:
+                data = await response.json()
+                return data.get("esearchresult", {}).get("idlist", [])
 
-    def _fetch_abstracts(self, pmids: list) -> list:
+    async def _fetch_abstracts(self, pmids: list) -> list:
         if not pmids:
             return []
         params = {
@@ -98,23 +101,24 @@ Return ONLY a short search string (max 6 words). Nothing else."""
             "id": ",".join(pmids),
             "retmode": "json"
         }
-        response = requests.get(PUBMED_SUMMARY_URL, params=params)
-        data = response.json()
-        papers = []
-        for pmid in pmids:
-            try:
-                article = data["result"][pmid]
-                papers.append({
-                    "pmid": pmid,
-                    "title": article.get("title", "No title"),
-                    "authors": [a["name"] for a in article.get("authors", [])[:3]],
-                    "journal": article.get("fulljournalname", ""),
-                    "year": article.get("pubdate", ""),
-                    "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
-                })
-            except Exception:
-                continue
-        return papers
+        async with aiohttp.ClientSession() as session:
+            async with session.get(PUBMED_SUMMARY_URL, params=params) as response:
+                data = await response.json()
+                papers = []
+                for pmid in pmids:
+                    try:
+                        article = data["result"][pmid]
+                        papers.append({
+                            "pmid": pmid,
+                            "title": article.get("title", "No title"),
+                            "authors": [a["name"] for a in article.get("authors", [])[:3]],
+                            "journal": article.get("fulljournalname", ""),
+                            "year": article.get("pubdate", ""),
+                            "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+                        })
+                    except Exception:
+                        continue
+                return papers
 
     def _summarise_evidence(self, papers: list, diagnosis: list) -> str:
         if not papers:

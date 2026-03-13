@@ -23,7 +23,7 @@ class ChairmanAgent:
         self.model = "llama-3.1-8b-instant"  # Stable GROQ model
         
     @simple_timer.time_agent("Chairman Agent")
-    def analyze(self, input_data: ChairmanInput, save_to_db: bool = True) -> ChairmanOutput:
+    async def analyze(self, input_data: ChairmanInput, save_to_db: bool = True) -> ChairmanOutput:
         """
         Generate comprehensive final medical report by synthesizing all specialist findings
         """

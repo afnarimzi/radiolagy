@@ -73,6 +73,22 @@ async def health_check():
         "risk_agent": "ready"
     }
 
+@app.get("/timing")
+async def get_timing_info():
+    """Get detailed timing information from the last session"""
+    from app.utils.simple_timer import simple_timer
+    
+    session_summary = simple_timer.get_session_summary()
+    current_session = simple_timer.get_current_session()
+    
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat(),
+        "session_summary": session_summary,
+        "detailed_timings": current_session,
+        "message": "Timing data from most recent agent execution session"
+    }
+
 # Patient endpoints
 @app.post("/patients", response_model=PatientResponse)
 async def create_patient(patient: PatientCreate, db: Session = Depends(get_db)):
@@ -138,7 +154,7 @@ async def analyze_xray(request: AnalysisRequest, db: Session = Depends(get_db)):
         )
         
         # Analyze with radiology agent
-        findings = radiology_agent.analyze(xray_input, save_to_db=True)
+        findings = await radiology_agent.analyze(xray_input, save_to_db=True)
         
         return AnalysisResponse(
             case_id=findings.case_id,
@@ -225,7 +241,7 @@ async def assess_risk(request: RiskAssessmentRequest, db: Session = Depends(get_
         )
         
         # Assess risk with risk agent
-        risk_assessment = risk_agent.assess_risk(risk_input, save_to_db=True)
+        risk_assessment = await risk_agent.assess_risk(risk_input, save_to_db=True)
         
         return RiskAssessmentResponse(
             case_id=risk_assessment.case_id,
@@ -258,7 +274,7 @@ async def analyze_and_assess_risk(request: AnalysisRequest, db: Session = Depend
             additional_info=request.additional_info
         )
         
-        radiology_findings = radiology_agent.analyze(xray_input, save_to_db=True)
+        radiology_findings = await radiology_agent.analyze(xray_input, save_to_db=True)
         
         # Step 2: Risk assessment
         risk_input = RiskInput(
@@ -268,7 +284,7 @@ async def analyze_and_assess_risk(request: AnalysisRequest, db: Session = Depend
             clinical_context=request.additional_info
         )
         
-        risk_assessment = risk_agent.assess_risk(risk_input, save_to_db=True)
+        risk_assessment = await risk_agent.assess_risk(risk_input, save_to_db=True)
         
         return {
             "case_id": radiology_findings.case_id,
@@ -309,7 +325,7 @@ async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depe
             additional_info=request.additional_info
         )
         
-        radiology_findings = radiology_agent.analyze(xray_input, save_to_db=False)  # Disable DB save for testing
+        radiology_findings = await radiology_agent.analyze(xray_input, save_to_db=False)  # Disable DB save for testing
         
         # Step 2: Clinical Analysis
         from app.models.clinical_models import ClinicalInput
@@ -322,7 +338,7 @@ async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depe
             additional_info=request.additional_info
         )
         
-        clinical_findings = clinical_agent_instance.analyze(clinical_input, save_to_db=False)  # Disable DB save for testing
+        clinical_findings = await clinical_agent_instance.analyze(clinical_input, save_to_db=False)  # Disable DB save for testing
         
         # Step 3: Evidence Search
         from app.models.evidence_models import EvidenceInput
@@ -339,7 +355,7 @@ async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depe
             radiology_findings=radiology_findings.findings
         )
         
-        evidence_findings = evidence_agent_instance.analyze(evidence_input, save_to_db=False)  # Disable DB save for testing
+        evidence_findings = await evidence_agent_instance.analyze(evidence_input, save_to_db=False)  # Disable DB save for testing
         
         # Step 4: Risk Assessment
         risk_input = RiskInput(
@@ -349,7 +365,7 @@ async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depe
             clinical_context=f"Clinical diagnosis: {clinical_findings.differential_diagnosis}. Urgency: {clinical_findings.urgency}"
         )
         
-        risk_assessment = risk_agent.assess_risk(risk_input, save_to_db=False)  # Disable DB save for testing
+        risk_assessment = await risk_agent.assess_risk(risk_input, save_to_db=False)  # Disable DB save for testing
         
         # Return comprehensive results
         return {
@@ -542,6 +558,11 @@ async def upload_complete_pipeline_with_chairman(
 ):
     """Upload image and run complete 5-agent pipeline: Upload → Radiology → Clinical → Evidence → Risk → Chairman"""
     try:
+        # Reset timing session for clean measurements
+        from app.utils.simple_timer import simple_timer
+        import asyncio
+        simple_timer.reset_session()
+        
         # Step 1: Save uploaded file
         upload_dir = "uploads"
         os.makedirs(upload_dir, exist_ok=True)
@@ -561,10 +582,10 @@ async def upload_complete_pipeline_with_chairman(
             additional_info=additional_info or f"Uploaded file: {file.filename}"
         )
         
-        # Step 3: Radiology Analysis
-        radiology_findings = radiology_agent.analyze(xray_input, save_to_db=False)
+        # Step 3: Radiology Analysis (Sequential - must go first)
+        radiology_findings = await radiology_agent.analyze(xray_input, save_to_db=False)
         
-        # Step 4: Clinical Analysis
+        # Step 4-6: Prepare inputs for parallel execution
         from app.models.clinical_models import ClinicalInput
         clinical_input = ClinicalInput(
             case_id=case_id,
@@ -575,36 +596,34 @@ async def upload_complete_pipeline_with_chairman(
             additional_info=additional_info
         )
         
-        clinical_findings = clinical_agent_instance.analyze(clinical_input, save_to_db=False)
-        
-        # Step 5: Evidence Search
         from app.models.evidence_models import EvidenceInput
-        # Extract primary diagnosis for evidence search
-        if isinstance(clinical_findings.differential_diagnosis, list):
-            primary_diagnosis = clinical_findings.differential_diagnosis[0] if clinical_findings.differential_diagnosis else "chest abnormality"
-        else:
-            primary_diagnosis = clinical_findings.differential_diagnosis.split(',')[0].strip() if clinical_findings.differential_diagnosis else "chest abnormality"
-        
         evidence_input = EvidenceInput(
             case_id=case_id,
             patient_code=patient_code,
-            diagnosis=[primary_diagnosis],
+            diagnosis=["chest abnormality"],
             radiology_findings=radiology_findings.findings
         )
         
-        evidence_findings = evidence_agent_instance.analyze(evidence_input, save_to_db=False)
-        
-        # Step 6: Risk Assessment
         risk_input = RiskInput(
             case_id=case_id,
             radiology_findings=radiology_findings.findings,
             confidence=radiology_findings.confidence,
-            clinical_context=f"Clinical diagnosis: {clinical_findings.differential_diagnosis}. Urgency: {clinical_findings.urgency}"
+            clinical_context=f"Radiology findings: {radiology_findings.findings}"
         )
         
-        risk_assessment = risk_agent.assess_risk(risk_input, save_to_db=False)
+        # Step 4-6: Run Clinical, Evidence, and Risk agents in PARALLEL
+        clinical_task = clinical_agent_instance.analyze(clinical_input, save_to_db=False)
+        evidence_task = evidence_agent_instance.analyze(evidence_input, save_to_db=False)
+        risk_task = risk_agent.assess_risk(risk_input, save_to_db=False)
         
-        # Step 7: Chairman Analysis - Synthesize all findings
+        # Wait for all 3 agents to complete
+        clinical_findings, evidence_findings, risk_assessment = await asyncio.gather(
+            clinical_task,
+            evidence_task, 
+            risk_task
+        )
+        
+        # Step 7: Chairman Analysis (Sequential - needs all previous results)
         chairman_input = ChairmanInput(
             case_id=case_id,
             patient_code=patient_code,
@@ -645,7 +664,7 @@ async def upload_complete_pipeline_with_chairman(
             additional_notes=additional_info
         )
         
-        chairman_report = chairman_agent.analyze(chairman_input, save_to_db=True)
+        chairman_report = await chairman_agent.analyze(chairman_input, save_to_db=True)
         
         # Return comprehensive results including Chairman's final report
         return {
@@ -939,7 +958,7 @@ async def run_clinical_agent(request: ClinicalRequest, db: Session = Depends(get
             confidence=request.confidence,
             additional_info=request.additional_info
         )
-        findings = clinical_agent_instance.analyze(clinical_input, save_to_db=True)
+        findings = await clinical_agent_instance.analyze(clinical_input, save_to_db=True)
         return ClinicalResponse(
             case_id=findings.case_id,
             patient_code=findings.patient_code,
@@ -963,7 +982,7 @@ async def run_evidence_agent(request: EvidenceRequest, db: Session = Depends(get
             diagnosis=request.diagnosis,
             radiology_findings=request.radiology_findings
         )
-        findings = evidence_agent_instance.analyze(evidence_input, save_to_db=True)
+        findings = await evidence_agent_instance.analyze(evidence_input, save_to_db=True)
         return EvidenceResponse(
             case_id=findings.case_id,
             patient_code=findings.patient_code,
