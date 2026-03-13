@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 BASE_URL = "http://localhost:8000"
-TEST_IMAGE_PATH = "test_images/00000003_000.png"
+TEST_IMAGE_PATH = "test_images/p10004457.jpeg"
 
 def test_individual_agents():
     """Test complete pipeline and get real individual agent timing"""
