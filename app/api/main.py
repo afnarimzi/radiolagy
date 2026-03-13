@@ -1,13 +1,21 @@
 """
-FastAPI application for Radiology AI Multi-Agent System
+FastAPI application for Radiology AI Multi-Agent System with LangGraph Orchestration
 """
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import os
 import uuid
+import asyncio
+import concurrent.futures
+import time
 from datetime import datetime
+
+# LangGraph imports
+from langgraph.graph import StateGraph, END
+from typing_extensions import TypedDict
+
 from app.agents.clinical_agent import ClinicalAgent
 from app.agents.evidence_agent import EvidenceAgent
 from app.api.models import ClinicalRequest, ClinicalResponse, EvidenceRequest, EvidenceResponse
@@ -311,242 +319,179 @@ async def analyze_and_assess_risk(request: AnalysisRequest, db: Session = Depend
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Complete analysis failed: {str(e)}")
 
-@app.post("/analyze-complete-pipeline", response_model=dict)
 async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depends(get_db)):
-    """Complete 4-agent pipeline: Radiology → Clinical → Evidence → Risk Assessment"""
+    """Run complete 5-agent pipeline using integrated LangGraph orchestration on existing image"""
     try:
-        case_id = request.case_id or str(uuid.uuid4())
-        
-        # Step 1: Radiology Analysis
-        xray_input = XrayInput(
+        # Reset timing session for clean measurements
+        from app.utils.simple_timer import simple_timer
+        from app.orchestration.pipeline import medical_pipeline
+        simple_timer.reset_session()
+
+        # Step 1: Run integrated LangGraph medical pipeline
+        pipeline_result = await medical_pipeline.run_pipeline(
             image_path=request.image_path,
             patient_code=request.patient_code,
-            case_id=case_id,
             additional_info=request.additional_info
         )
-        
-        radiology_findings = await radiology_agent.analyze(xray_input, save_to_db=False)  # Disable DB save for testing
-        
-        # Step 2: Clinical Analysis
-        from app.models.clinical_models import ClinicalInput
-        clinical_input = ClinicalInput(
-            case_id=case_id,
-            patient_code=request.patient_code,
-            radiology_findings=radiology_findings.findings,
-            abnormalities=radiology_findings.abnormalities,
-            confidence=radiology_findings.confidence,
-            additional_info=request.additional_info
-        )
-        
-        clinical_findings = await clinical_agent_instance.analyze(clinical_input, save_to_db=False)  # Disable DB save for testing
-        
-        # Step 3: Evidence Search
-        from app.models.evidence_models import EvidenceInput
-        # Extract primary diagnosis for evidence search
-        if isinstance(clinical_findings.differential_diagnosis, list):
-            primary_diagnosis = clinical_findings.differential_diagnosis[0] if clinical_findings.differential_diagnosis else "chest abnormality"
-        else:
-            primary_diagnosis = clinical_findings.differential_diagnosis.split(',')[0].strip() if clinical_findings.differential_diagnosis else "chest abnormality"
-        
-        evidence_input = EvidenceInput(
-            case_id=case_id,
-            patient_code=request.patient_code,
-            diagnosis=[primary_diagnosis],
-            radiology_findings=radiology_findings.findings
-        )
-        
-        evidence_findings = await evidence_agent_instance.analyze(evidence_input, save_to_db=False)  # Disable DB save for testing
-        
-        # Step 4: Risk Assessment
-        risk_input = RiskInput(
-            case_id=case_id,
-            radiology_findings=radiology_findings.findings,
-            confidence=radiology_findings.confidence,
-            clinical_context=f"Clinical diagnosis: {clinical_findings.differential_diagnosis}. Urgency: {clinical_findings.urgency}"
-        )
-        
-        risk_assessment = await risk_agent.assess_risk(risk_input, save_to_db=False)  # Disable DB save for testing
-        
-        # Return comprehensive results
+
+        # Step 2: Return comprehensive results
         return {
-            "case_id": case_id,
+            "message": "Complete 5-agent medical pipeline completed successfully",
+            "case_id": pipeline_result.get("case_id"),
             "patient_code": request.patient_code,
             "pipeline_status": "completed",
-            "agents_executed": ["radiology", "clinical", "evidence", "risk"],
+            "orchestration": "Integrated LangGraph StateGraph",
+
+            # Agent Results
             "radiology_analysis": {
-                "findings": radiology_findings.findings,
-                "abnormalities": radiology_findings.abnormalities,
-                "anatomical_structures": radiology_findings.anatomical_structures,
-                "confidence": radiology_findings.confidence,
-                "recommendations": radiology_findings.recommendations,
-                "image_quality": radiology_findings.image_quality
+                "findings": pipeline_result.get("radiology_findings", ""),
+                "abnormalities": pipeline_result.get("abnormalities", []),
+                "anatomical_structures": pipeline_result.get("anatomical_structures", []),
+                "confidence": pipeline_result.get("confidence", 0.0),
+                "image_quality": pipeline_result.get("image_quality", "unknown"),
+                "recommendations": pipeline_result.get("radiology_recommendations", [])
             },
             "clinical_analysis": {
-                "differential_diagnosis": clinical_findings.differential_diagnosis,
-                "reasoning": clinical_findings.reasoning,
-                "urgency": clinical_findings.urgency,
-                "recommended_followup": clinical_findings.recommended_followup,
-                "confidence": clinical_findings.confidence
+                "differential_diagnosis": pipeline_result.get("differential_diagnosis", []),
+                "reasoning": pipeline_result.get("clinical_reasoning", ""),
+                "urgency": pipeline_result.get("clinical_urgency", "unknown"),
+                "recommended_followup": pipeline_result.get("clinical_followup", ""),
+                "confidence": pipeline_result.get("clinical_confidence", 0.0)
             },
             "evidence_research": {
-                "search_keywords": evidence_findings.search_keywords,
-                "evidence_summary": evidence_findings.evidence_summary,
-                "total_papers_found": evidence_findings.total_papers_found,
-                "citations": [c.dict() for c in evidence_findings.citations]
+                "search_keywords": pipeline_result.get("search_keywords", ""),
+                "evidence_summary": pipeline_result.get("evidence_summary", ""),
+                "total_papers_found": pipeline_result.get("total_papers", 0),
+                "citations": pipeline_result.get("citations", [])
             },
             "risk_assessment": {
-                "risk_level": risk_assessment.risk_level,
-                "risk_score": risk_assessment.risk_score,
-                "recommended_action": risk_assessment.recommended_action,
-                "urgency_timeline": risk_assessment.urgency_timeline,
-                "specialist_referral": risk_assessment.specialist_referral,
-                "critical_findings": risk_assessment.critical_findings,
-                "risk_factors": risk_assessment.risk_factors,
-                "next_steps": risk_assessment.next_steps,
-                "reasoning": risk_assessment.reasoning,
-                "confidence": risk_assessment.confidence
+                "risk_level": pipeline_result.get("risk_level", "unknown"),
+                "risk_score": pipeline_result.get("risk_score", 0.0),
+                "recommended_action": pipeline_result.get("risk_action", "unknown"),
+                "urgency_timeline": pipeline_result.get("risk_timeline", ""),
+                "risk_factors": pipeline_result.get("risk_factors", []),
+                "critical_findings": pipeline_result.get("critical_findings", []),
+                "next_steps": pipeline_result.get("next_steps", [])
             },
-            "overall_confidence": round((radiology_findings.confidence + clinical_findings.confidence + risk_assessment.confidence) / 3, 2),
+            "chairman_report": pipeline_result.get("chairman_report", {}),
+
+            "overall_confidence": pipeline_result.get("chairman_confidence", 0.85),
             "processing_summary": {
-                "total_agents": 4,
-                "successful_agents": 4,
-                "data_flow": "Radiology → Clinical → Evidence → Risk"
+                "total_agents": 5,
+                "successful_agents": sum([
+                    pipeline_result.get("radiology_complete", False),
+                    pipeline_result.get("clinical_complete", False),
+                    pipeline_result.get("evidence_complete", False),
+                    pipeline_result.get("risk_complete", False),
+                    pipeline_result.get("chairman_complete", False)
+                ]),
+                "workflow": "Integrated LangGraph Medical Pipeline",
+                "stage_timings": pipeline_result.get("stage_timings", {}),
+                "errors": pipeline_result.get("errors", [])
             },
             "timestamp": datetime.utcnow()
         }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Complete 4-agent pipeline failed: {str(e)}")
 
-@app.post("/upload-complete-pipeline")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Medical pipeline failed: {str(e)}")
+
 async def upload_complete_pipeline(
     file: UploadFile = File(...),
     patient_code: str = "UNKNOWN",
     additional_info: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Upload image and run complete 4-agent pipeline: Upload → Radiology → Clinical → Evidence → Risk"""
+    """Upload image and run complete 5-agent medical pipeline using integrated LangGraph orchestration"""
     try:
+        # Reset timing session for clean measurements
+        from app.utils.simple_timer import simple_timer
+        from app.orchestration.pipeline import medical_pipeline
+        simple_timer.reset_session()
+
         # Step 1: Save uploaded file
         upload_dir = "uploads"
         os.makedirs(upload_dir, exist_ok=True)
-        
+
         case_id = str(uuid.uuid4())
         file_path = os.path.join(upload_dir, f"{case_id}_{file.filename}")
-        
+
         with open(file_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
-        
-        # Step 2: Run complete 4-agent pipeline on uploaded image
-        xray_input = XrayInput(
+
+        # Step 2: Run integrated LangGraph medical pipeline
+        pipeline_result = await medical_pipeline.run_pipeline(
             image_path=file_path,
             patient_code=patient_code,
-            case_id=case_id,
-            additional_info=additional_info or f"Uploaded file: {file.filename}"
-        )
-        
-        # Step 3: Radiology Analysis
-        radiology_findings = radiology_agent.analyze(xray_input, save_to_db=False)
-        
-        # Step 4: Clinical Analysis
-        from app.models.clinical_models import ClinicalInput
-        clinical_input = ClinicalInput(
-            case_id=case_id,
-            patient_code=patient_code,
-            radiology_findings=radiology_findings.findings,
-            abnormalities=radiology_findings.abnormalities,
-            confidence=radiology_findings.confidence,
             additional_info=additional_info
         )
-        
-        clinical_findings = clinical_agent_instance.analyze(clinical_input, save_to_db=False)
-        
-        # Step 5: Evidence Search
-        from app.models.evidence_models import EvidenceInput
-        # Extract primary diagnosis for evidence search
-        if isinstance(clinical_findings.differential_diagnosis, list):
-            primary_diagnosis = clinical_findings.differential_diagnosis[0] if clinical_findings.differential_diagnosis else "chest abnormality"
-        else:
-            primary_diagnosis = clinical_findings.differential_diagnosis.split(',')[0].strip() if clinical_findings.differential_diagnosis else "chest abnormality"
-        
-        evidence_input = EvidenceInput(
-            case_id=case_id,
-            patient_code=patient_code,
-            diagnosis=[primary_diagnosis],
-            radiology_findings=radiology_findings.findings
-        )
-        
-        evidence_findings = evidence_agent_instance.analyze(evidence_input, save_to_db=False)
-        
-        # Step 6: Risk Assessment
-        risk_input = RiskInput(
-            case_id=case_id,
-            radiology_findings=radiology_findings.findings,
-            confidence=radiology_findings.confidence,
-            clinical_context=f"Clinical diagnosis: {clinical_findings.differential_diagnosis}. Urgency: {clinical_findings.urgency}"
-        )
-        
-        risk_assessment = risk_agent.assess_risk(risk_input, save_to_db=False)
-        
-        # Return comprehensive results
+
+        # Step 3: Return comprehensive results
         return {
-            "message": "Image uploaded and complete 4-agent analysis completed successfully",
+            "message": "Complete 5-agent medical pipeline completed successfully",
             "upload_info": {
                 "original_filename": file.filename,
                 "saved_path": file_path,
                 "file_size": len(content),
                 "content_type": file.content_type
             },
-            "case_id": case_id,
+            "case_id": pipeline_result.get("case_id"),
             "patient_code": patient_code,
             "pipeline_status": "completed",
-            "agents_executed": ["radiology", "clinical", "evidence", "risk"],
+            "orchestration": "Integrated LangGraph StateGraph",
+
+            # Agent Results
             "radiology_analysis": {
-                "findings": radiology_findings.findings,
-                "abnormalities": radiology_findings.abnormalities,
-                "anatomical_structures": radiology_findings.anatomical_structures,
-                "confidence": radiology_findings.confidence,
-                "recommendations": radiology_findings.recommendations,
-                "image_quality": radiology_findings.image_quality
+                "findings": pipeline_result.get("radiology_findings", ""),
+                "abnormalities": pipeline_result.get("abnormalities", []),
+                "anatomical_structures": pipeline_result.get("anatomical_structures", []),
+                "confidence": pipeline_result.get("confidence", 0.0),
+                "image_quality": pipeline_result.get("image_quality", "unknown"),
+                "recommendations": pipeline_result.get("radiology_recommendations", [])
             },
             "clinical_analysis": {
-                "differential_diagnosis": clinical_findings.differential_diagnosis,
-                "reasoning": clinical_findings.reasoning,
-                "urgency": clinical_findings.urgency,
-                "recommended_followup": clinical_findings.recommended_followup,
-                "confidence": clinical_findings.confidence
+                "differential_diagnosis": pipeline_result.get("differential_diagnosis", []),
+                "reasoning": pipeline_result.get("clinical_reasoning", ""),
+                "urgency": pipeline_result.get("clinical_urgency", "unknown"),
+                "recommended_followup": pipeline_result.get("clinical_followup", ""),
+                "confidence": pipeline_result.get("clinical_confidence", 0.0)
             },
             "evidence_research": {
-                "search_keywords": evidence_findings.search_keywords,
-                "evidence_summary": evidence_findings.evidence_summary,
-                "total_papers_found": evidence_findings.total_papers_found,
-                "citations": [c.dict() for c in evidence_findings.citations]
+                "search_keywords": pipeline_result.get("search_keywords", ""),
+                "evidence_summary": pipeline_result.get("evidence_summary", ""),
+                "total_papers_found": pipeline_result.get("total_papers", 0),
+                "citations": pipeline_result.get("citations", [])
             },
             "risk_assessment": {
-                "risk_level": risk_assessment.risk_level,
-                "risk_score": risk_assessment.risk_score,
-                "recommended_action": risk_assessment.recommended_action,
-                "urgency_timeline": risk_assessment.urgency_timeline,
-                "specialist_referral": risk_assessment.specialist_referral,
-                "critical_findings": risk_assessment.critical_findings,
-                "risk_factors": risk_assessment.risk_factors,
-                "next_steps": risk_assessment.next_steps,
-                "reasoning": risk_assessment.reasoning,
-                "confidence": risk_assessment.confidence
+                "risk_level": pipeline_result.get("risk_level", "unknown"),
+                "risk_score": pipeline_result.get("risk_score", 0.0),
+                "recommended_action": pipeline_result.get("risk_action", "unknown"),
+                "urgency_timeline": pipeline_result.get("risk_timeline", ""),
+                "risk_factors": pipeline_result.get("risk_factors", []),
+                "critical_findings": pipeline_result.get("critical_findings", []),
+                "next_steps": pipeline_result.get("next_steps", [])
             },
-            "overall_confidence": round((radiology_findings.confidence + clinical_findings.confidence + risk_assessment.confidence) / 3, 2),
+            "chairman_report": pipeline_result.get("chairman_report", {}),
+
+            "overall_confidence": pipeline_result.get("chairman_confidence", 0.85),
             "processing_summary": {
-                "total_agents": 4,
-                "successful_agents": 4,
-                "data_flow": "Upload → Radiology → Clinical → Evidence → Risk",
-                "workflow": "Complete medical analysis from uploaded image"
+                "total_agents": 5,
+                "successful_agents": sum([
+                    pipeline_result.get("radiology_complete", False),
+                    pipeline_result.get("clinical_complete", False),
+                    pipeline_result.get("evidence_complete", False),
+                    pipeline_result.get("risk_complete", False),
+                    pipeline_result.get("chairman_complete", False)
+                ]),
+                "workflow": "Integrated LangGraph Medical Pipeline",
+                "stage_timings": pipeline_result.get("stage_timings", {}),
+                "errors": pipeline_result.get("errors", [])
             },
             "timestamp": datetime.utcnow()
         }
-        
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload and complete pipeline failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Medical pipeline failed: {str(e)}")
 
 @app.post("/upload-complete-pipeline-with-chairman")
 async def upload_complete_pipeline_with_chairman(
@@ -556,197 +501,98 @@ async def upload_complete_pipeline_with_chairman(
     patient_history: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Upload image and run complete 5-agent pipeline: Upload → Radiology → Clinical → Evidence → Risk → Chairman"""
+    """Upload image and run complete 5-agent medical pipeline using integrated LangGraph orchestration"""
     try:
         # Reset timing session for clean measurements
         from app.utils.simple_timer import simple_timer
-        import asyncio
+        from app.orchestration.pipeline import medical_pipeline
         simple_timer.reset_session()
-        
+
         # Step 1: Save uploaded file
         upload_dir = "uploads"
         os.makedirs(upload_dir, exist_ok=True)
-        
+
         case_id = str(uuid.uuid4())
         file_path = os.path.join(upload_dir, f"{case_id}_{file.filename}")
-        
+
         with open(file_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
-        
-        # Step 2: Run complete 4-agent pipeline on uploaded image
-        xray_input = XrayInput(
+
+        # Step 2: Run integrated LangGraph medical pipeline
+        pipeline_result = await medical_pipeline.run_pipeline(
             image_path=file_path,
             patient_code=patient_code,
-            case_id=case_id,
-            additional_info=additional_info or f"Uploaded file: {file.filename}"
+            additional_info=additional_info,
+            patient_history=patient_history
         )
-        
-        # Step 3: Radiology Analysis (Sequential - must go first)
-        radiology_findings = await radiology_agent.analyze(xray_input, save_to_db=False)
-        
-        # Step 4-6: Prepare inputs for parallel execution
-        from app.models.clinical_models import ClinicalInput
-        clinical_input = ClinicalInput(
-            case_id=case_id,
-            patient_code=patient_code,
-            radiology_findings=radiology_findings.findings,
-            abnormalities=radiology_findings.abnormalities,
-            confidence=radiology_findings.confidence,
-            additional_info=additional_info
-        )
-        
-        from app.models.evidence_models import EvidenceInput
-        evidence_input = EvidenceInput(
-            case_id=case_id,
-            patient_code=patient_code,
-            diagnosis=["chest abnormality"],
-            radiology_findings=radiology_findings.findings
-        )
-        
-        risk_input = RiskInput(
-            case_id=case_id,
-            radiology_findings=radiology_findings.findings,
-            confidence=radiology_findings.confidence,
-            clinical_context=f"Radiology findings: {radiology_findings.findings}"
-        )
-        
-        # Step 4-6: Run Clinical, Evidence, and Risk agents in PARALLEL
-        clinical_task = clinical_agent_instance.analyze(clinical_input, save_to_db=False)
-        evidence_task = evidence_agent_instance.analyze(evidence_input, save_to_db=False)
-        risk_task = risk_agent.assess_risk(risk_input, save_to_db=False)
-        
-        # Wait for all 3 agents to complete
-        clinical_findings, evidence_findings, risk_assessment = await asyncio.gather(
-            clinical_task,
-            evidence_task, 
-            risk_task
-        )
-        
-        # Step 7: Chairman Analysis (Sequential - needs all previous results)
-        chairman_input = ChairmanInput(
-            case_id=case_id,
-            patient_code=patient_code,
-            radiology_findings={
-                "findings": radiology_findings.findings,
-                "abnormalities": radiology_findings.abnormalities,
-                "anatomical_structures": radiology_findings.anatomical_structures,
-                "confidence": radiology_findings.confidence,
-                "recommendations": radiology_findings.recommendations,
-                "image_quality": radiology_findings.image_quality
-            },
-            clinical_findings={
-                "differential_diagnosis": clinical_findings.differential_diagnosis,
-                "reasoning": clinical_findings.reasoning,
-                "urgency": clinical_findings.urgency,
-                "recommended_followup": clinical_findings.recommended_followup,
-                "confidence": clinical_findings.confidence
-            },
-            evidence_findings={
-                "search_keywords": evidence_findings.search_keywords,
-                "evidence_summary": evidence_findings.evidence_summary,
-                "total_papers_found": evidence_findings.total_papers_found,
-                "citations": [c.dict() for c in evidence_findings.citations]
-            },
-            risk_findings={
-                "risk_level": risk_assessment.risk_level,
-                "risk_score": risk_assessment.risk_score,
-                "recommended_action": risk_assessment.recommended_action,
-                "urgency_timeline": risk_assessment.urgency_timeline,
-                "specialist_referral": risk_assessment.specialist_referral,
-                "critical_findings": risk_assessment.critical_findings,
-                "risk_factors": risk_assessment.risk_factors,
-                "next_steps": risk_assessment.next_steps,
-                "reasoning": risk_assessment.reasoning,
-                "confidence": risk_assessment.confidence
-            },
-            patient_history=patient_history,
-            additional_notes=additional_info
-        )
-        
-        chairman_report = await chairman_agent.analyze(chairman_input, save_to_db=True)
-        
-        # Return comprehensive results including Chairman's final report
+
+        # Step 3: Return comprehensive results
         return {
-            "message": "Image uploaded and complete 5-agent analysis with Chairman report completed successfully",
+            "message": "Complete 5-agent medical pipeline completed successfully",
             "upload_info": {
                 "original_filename": file.filename,
                 "saved_path": file_path,
                 "file_size": len(content),
                 "content_type": file.content_type
             },
-            "case_id": case_id,
+            "case_id": pipeline_result.get("case_id"),
             "patient_code": patient_code,
             "pipeline_status": "completed",
-            "agents_executed": ["radiology", "clinical", "evidence", "risk", "chairman"],
-            
-            # Individual Agent Results
+            "orchestration": "Integrated LangGraph StateGraph",
+
+            # Agent Results
             "radiology_analysis": {
-                "findings": radiology_findings.findings,
-                "abnormalities": radiology_findings.abnormalities,
-                "anatomical_structures": radiology_findings.anatomical_structures,
-                "confidence": radiology_findings.confidence,
-                "recommendations": radiology_findings.recommendations,
-                "image_quality": radiology_findings.image_quality
+                "findings": pipeline_result.get("radiology_findings", ""),
+                "abnormalities": pipeline_result.get("abnormalities", []),
+                "anatomical_structures": pipeline_result.get("anatomical_structures", []),
+                "confidence": pipeline_result.get("confidence", 0.0),
+                "image_quality": pipeline_result.get("image_quality", "unknown"),
+                "recommendations": pipeline_result.get("radiology_recommendations", [])
             },
             "clinical_analysis": {
-                "differential_diagnosis": clinical_findings.differential_diagnosis,
-                "reasoning": clinical_findings.reasoning,
-                "urgency": clinical_findings.urgency,
-                "recommended_followup": clinical_findings.recommended_followup,
-                "confidence": clinical_findings.confidence
+                "differential_diagnosis": pipeline_result.get("differential_diagnosis", []),
+                "reasoning": pipeline_result.get("clinical_reasoning", ""),
+                "urgency": pipeline_result.get("clinical_urgency", "unknown"),
+                "recommended_followup": pipeline_result.get("clinical_followup", ""),
+                "confidence": pipeline_result.get("clinical_confidence", 0.0)
             },
             "evidence_research": {
-                "search_keywords": evidence_findings.search_keywords,
-                "evidence_summary": evidence_findings.evidence_summary,
-                "total_papers_found": evidence_findings.total_papers_found,
-                "citations": [c.dict() for c in evidence_findings.citations]
+                "search_keywords": pipeline_result.get("search_keywords", ""),
+                "evidence_summary": pipeline_result.get("evidence_summary", ""),
+                "total_papers_found": pipeline_result.get("total_papers", 0),
+                "citations": pipeline_result.get("citations", [])
             },
             "risk_assessment": {
-                "risk_level": risk_assessment.risk_level,
-                "risk_score": risk_assessment.risk_score,
-                "recommended_action": risk_assessment.recommended_action,
-                "urgency_timeline": risk_assessment.urgency_timeline,
-                "specialist_referral": risk_assessment.specialist_referral,
-                "critical_findings": risk_assessment.critical_findings,
-                "risk_factors": risk_assessment.risk_factors,
-                "next_steps": risk_assessment.next_steps,
-                "reasoning": risk_assessment.reasoning,
-                "confidence": risk_assessment.confidence
+                "risk_level": pipeline_result.get("risk_level", "unknown"),
+                "risk_score": pipeline_result.get("risk_score", 0.0),
+                "recommended_action": pipeline_result.get("risk_action", "unknown"),
+                "urgency_timeline": pipeline_result.get("risk_timeline", ""),
+                "risk_factors": pipeline_result.get("risk_factors", []),
+                "critical_findings": pipeline_result.get("critical_findings", []),
+                "next_steps": pipeline_result.get("next_steps", [])
             },
-            
-            # Chairman's Final Report
-            "chairman_report": {
-                "executive_summary": chairman_report.executive_summary,
-                "primary_diagnosis": chairman_report.primary_diagnosis,
-                "differential_diagnoses": chairman_report.differential_diagnoses,
-                "radiology_synthesis": chairman_report.radiology_synthesis,
-                "clinical_synthesis": chairman_report.clinical_synthesis,
-                "evidence_synthesis": chairman_report.evidence_synthesis,
-                "risk_synthesis": chairman_report.risk_synthesis,
-                "immediate_actions": chairman_report.immediate_actions,
-                "follow_up_plan": chairman_report.follow_up_plan,
-                "specialist_referrals": chairman_report.specialist_referrals,
-                "confidence_level": chairman_report.confidence_level,
-                "consensus_score": chairman_report.consensus_score,
-                "urgency_level": chairman_report.urgency_level,
-                "chairman_reasoning": chairman_report.chairman_reasoning,
-                "quality_flags": chairman_report.quality_flags,
-                "report_generated_at": chairman_report.report_generated_at
-            },
-            
-            "overall_confidence": chairman_report.confidence_level,
+            "chairman_report": pipeline_result.get("chairman_report", {}),
+
+            "overall_confidence": pipeline_result.get("chairman_confidence", 0.85),
             "processing_summary": {
                 "total_agents": 5,
-                "successful_agents": 5,
-                "data_flow": "Upload → Radiology → Clinical → Evidence → Risk → Chairman",
-                "workflow": "Complete medical analysis with Chairman's final report"
+                "successful_agents": sum([
+                    pipeline_result.get("radiology_complete", False),
+                    pipeline_result.get("clinical_complete", False),
+                    pipeline_result.get("evidence_complete", False),
+                    pipeline_result.get("risk_complete", False),
+                    pipeline_result.get("chairman_complete", False)
+                ]),
+                "workflow": "Integrated LangGraph Medical Pipeline",
+                "stage_timings": pipeline_result.get("stage_timings", {}),
+                "errors": pipeline_result.get("errors", [])
             },
             "timestamp": datetime.utcnow()
         }
-        
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload and complete 5-agent pipeline failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Medical pipeline failed: {str(e)}")
 
 @app.get("/risk-assessments/{case_id}")
 async def get_risk_assessment(case_id: str, db: Session = Depends(get_db)):
