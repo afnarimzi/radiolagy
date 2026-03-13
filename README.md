@@ -1,20 +1,20 @@
-# 🏥 Multi-Agent Medical AI System
+# Multi-Agent Medical AI System
 
 A comprehensive medical AI system that orchestrates 5 specialized AI agents using **LangGraph** to provide complete medical analysis from X-ray images.
 
 
 
 
-### 🤖 AI Agents
+###  AI Agents
 
-1. **🔬 Radiology Agent** - X-ray image analysis using Google Gemini Vision
-2. **🩺 Clinical Agent** - Differential diagnosis using GROQ Llama 3.1
-3. **📚 Evidence Agent** - PubMed literature research using GROQ + PubMed API
-4. **⚠️ Risk Agent** - Risk assessment using Google Gemini
-5. **👔 Chairman Agent** - Final report synthesis using GROQ Llama 3.1
+1. **Radiology Agent** - X-ray image analysis using Google Gemini Vision
+2. **Clinical Agent** - Differential diagnosis using GROQ Llama 3.1
+3. **Evidence Agent** - PubMed literature research using GROQ + PubMed API
+4. **Risk Agent** - Risk assessment using Google Gemini
+5. **Chairman Agent** - Final report synthesis using GROQ Llama 3.1
 
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 llmCouncil/
@@ -47,7 +47,7 @@ llmCouncil/
 └── .env                    # API keys configuration
 ```
 
-## 🛠️ Installation & Setup
+##  Installation & Setup
 
 ### 1. Clone Repository
 ```bash
@@ -90,7 +90,7 @@ createdb medical_ai
 python -c "from app.database.init_db import init_database; init_database()"
 ```
 
-## 🚀 Usage
+## Usage
 
 ### Start the API Server
 ```bash
