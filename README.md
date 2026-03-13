@@ -3,7 +3,7 @@
 A comprehensive medical AI system that orchestrates 5 specialized AI agents using **LangGraph** to provide complete medical analysis from X-ray images.
 
 
-```
+
 
 ### 🤖 AI Agents
 
@@ -15,7 +15,7 @@ A comprehensive medical AI system that orchestrates 5 specialized AI agents usin
 
 ### 🔄 LangGraph Orchestration
 
-```
+
 ┌─────────────┐    ┌─────────────────────────┐    ┌─────────────┐
 │  Radiology  │───▶│    Parallel Stage       │───▶│  Chairman   │
 │   Agent     │    │ Clinical + Evidence +   │    │   Agent     │
