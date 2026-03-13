@@ -21,14 +21,7 @@ A comprehensive medical AI system that orchestrates 5 specialized AI agents usin
 │   Agent     │    │ Clinical + Evidence +   │    │   Agent     │
 │             │    │     Risk Agents         │    │             │
 └─────────────┘    └─────────────────────────┘    └─────────────┘
-```
 
-**Key Features:**
-- **Sequential Execution**: Radiology → Chairman (requires previous results)
-- **Parallel Execution**: Clinical, Evidence, Risk run simultaneously for optimal performance
-- **State Management**: LangGraph manages data flow between all agents
-- **Error Handling**: Built-in retry mechanisms and graceful failure handling
-- **Performance Tracking**: Real-time timing analysis for each agent
 
 ## 📁 Project Structure
 
