@@ -1,8 +1,10 @@
-# Multi-Agent Medical AI System
+# 🏥 Multi-Agent Medical AI System
 
 A comprehensive medical AI system that orchestrates 5 specialized AI agents using **LangGraph** to provide complete medical analysis from X-ray images.
 
+
 ```
+
 ### 🤖 AI Agents
 
 1. **🔬 Radiology Agent** - X-ray image analysis using Google Gemini Vision
@@ -21,7 +23,12 @@ A comprehensive medical AI system that orchestrates 5 specialized AI agents usin
 └─────────────┘    └─────────────────────────┘    └─────────────┘
 ```
 
-
+**Key Features:**
+- **Sequential Execution**: Radiology → Chairman (requires previous results)
+- **Parallel Execution**: Clinical, Evidence, Risk run simultaneously for optimal performance
+- **State Management**: LangGraph manages data flow between all agents
+- **Error Handling**: Built-in retry mechanisms and graceful failure handling
+- **Performance Tracking**: Real-time timing analysis for each agent
 
 ## 📁 Project Structure
 
@@ -46,7 +53,7 @@ llmCouncil/
 │   │   ├── evidence_models.py
 │   │   ├── risk_models.py
 │   │   └── chairman_models.py
-│   ├── orchestration/    # LangGraph pipeline orchestration 
+│   ├── orchestration/    # LangGraph pipeline orchestration ✨
 │   │   └── pipeline.py   # StateGraph coordination
 │   └── utils/            # Utilities
 │       └── simple_timer.py # Performance tracking
@@ -56,7 +63,7 @@ llmCouncil/
 └── .env                    # API keys configuration
 ```
 
-##  Installation & Setup
+## 🛠️ Installation & Setup
 
 ### 1. Clone Repository
 ```bash
@@ -108,6 +115,4 @@ python3 start_api.py
 
 The server will start at `http://localhost:8000`
 
-### API Documentation
-- **Swagger UI**: http://localhost:8000/docs
-
+#
