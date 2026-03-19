@@ -11,3 +11,6 @@ pillow
 python-multipart
 groq
 requests
+aiohttp
+langgraph
+langchain-core
