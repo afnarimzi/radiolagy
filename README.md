@@ -1,66 +1,16 @@
-# 🏥 Multi-Agent Medical AI System
+# 🏥 Radiology Assistant
 
-A comprehensive medical AI system that orchestrates 5 specialized AI agents using **LangGraph** to provide complete medical analysis from X-ray images.
-
-
-```
-
-### 🤖 AI Agents
-
-1. **🔬 Radiology Agent** - X-ray image analysis using Google Gemini Vision
-2. **🩺 Clinical Agent** - Differential diagnosis using GROQ Llama 3.1
-3. **📚 Evidence Agent** - PubMed literature research using GROQ + PubMed API
-4. **⚠️ Risk Agent** - Risk assessment using Google Gemini
-5. **👔 Chairman Agent** - Final report synthesis using GROQ Llama 3.1
-
-### 🔄 LangGraph Orchestration
-
-```
-┌─────────────┐    ┌─────────────────────────┐    ┌─────────────┐
-│  Radiology  │───▶│    Parallel Stage       │───▶│  Chairman   │
-│   Agent     │    │ Clinical + Evidence +   │    │   Agent     │
-│             │    │     Risk Agents         │    │             │
-└─────────────┘    └─────────────────────────┘    └─────────────┘
-```
-
-**Key Features:**
-- **Sequential Execution**: Radiology → Chairman (requires previous results)
-- **Parallel Execution**: Clinical, Evidence, Risk run simultaneously for optimal performance
-- **State Management**: LangGraph manages data flow between all agents
-- **Error Handling**: Built-in retry mechanisms and graceful failure handling
-- **Performance Tracking**: Real-time timing analysis for each agent
+AI-powered radiology assistant for comprehensive medical analysis from X-ray images.
 
 ## 📁 Project Structure
 
 ```
 llmCouncil/
-├── app/
-│   ├── agents/           # 5 AI agents
-│   │   ├── radiology_agent.py    # Gemini Vision for X-ray analysis
-│   │   ├── clinical_agent.py     # GROQ for clinical reasoning
-│   │   ├── evidence_agent.py     # GROQ + PubMed for research
-│   │   ├── risk_agent.py         # Gemini for risk assessment
-│   │   └── chairman_agent.py     # GROQ for final synthesis
-│   ├── api/              # FastAPI web interface
-│   │   └── main.py       # REST API endpoints
-│   ├── database/         # PostgreSQL operations
-│   │   ├── models.py     # Database schemas
-│   │   ├── crud.py       # Database operations
-│   │   └── database.py   # Connection management
-│   ├── models/           # Pydantic data models
-│   │   ├── radiology_models.py
-│   │   ├── clinical_models.py
-│   │   ├── evidence_models.py
-│   │   ├── risk_models.py
-│   │   └── chairman_models.py
-│   ├── orchestration/    # LangGraph pipeline orchestration ✨
-│   │   └── pipeline.py   # StateGraph coordination
-│   └── utils/            # Utilities
-│       └── simple_timer.py # Performance tracking
-├── test_detailed_timing.py   # Performance testing
-├── start_api.py             # API server launcher
-├── requirements.txt         # Dependencies
-└── .env                    # API keys configuration
+├── app/                  # Backend API
+├── frontend/             # React web interface
+├── start_api.py         # API server launcher
+├── requirements.txt     # Python dependencies
+└── .env                # API keys configuration
 ```
 
 ## 🛠️ Installation & Setup
@@ -108,11 +58,17 @@ python -c "from app.database.init_db import init_database; init_database()"
 
 ## 🚀 Usage
 
-### Start the API Server
+### Start Backend Server
 ```bash
 python3 start_api.py
 ```
 
-The server will start at `http://localhost:8000`
+### Start Frontend
+```bash
+cd frontend
+npm install
+npm start
+```
 
-#
+Access the application at `http://localhost:3000`
+

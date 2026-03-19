@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-medical-600 hover:bg-medical-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:ring-offset-2;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-lg border border-gray-200 p-6;
+  }
+  
+  .agent-card {
+    @apply bg-white rounded-lg shadow-md border border-gray-200 p-4 hover:shadow-lg transition-shadow duration-200;
+  }
+  
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .status-success {
+    @apply status-badge bg-success-50 text-success-600;
+  }
+  
+  .status-warning {
+    @apply status-badge bg-warning-50 text-warning-600;
+  }
+  
+  .status-danger {
+    @apply status-badge bg-danger-50 text-danger-600;
+  }
+  
+  .status-processing {
+    @apply status-badge bg-medical-50 text-medical-600;
+  }
+}
