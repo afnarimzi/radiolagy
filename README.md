@@ -56,7 +56,7 @@ createdb medical_ai
 python -c "from app.database.init_db import init_database; init_database()"
 ```
 
-## 🚀 Usage
+##  Usage
 
 ### Start Backend Server
 ```bash
