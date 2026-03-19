@@ -1,8 +1,8 @@
-# 🏥 Radiology Assistant
+#  Radiology Assistant
 
 AI-powered radiology assistant for comprehensive medical analysis from X-ray images.
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 llmCouncil/
@@ -13,7 +13,7 @@ llmCouncil/
 └── .env                # API keys configuration
 ```
 
-## 🛠️ Installation & Setup
+##  Installation & Setup
 
 ### 1. Clone Repository
 ```bash
