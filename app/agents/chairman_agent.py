@@ -37,14 +37,14 @@ class ChairmanAgent:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a Senior Medical Officer (Chairman) with 20+ years of experience. You review specialist medical reports and provide comprehensive final medical assessments. Always prioritize patient safety and provide clear, actionable recommendations."
+                        "content": "You are a Senior Medical Officer (Chairman) with 20+ years of experience. You review specialist medical reports and provide comprehensive final medical assessments. Always prioritize patient safety and provide clear, actionable recommendations. IMPORTANT: Always complete your JSON response fully - do not truncate any fields."
                     },
                     {
                         "role": "user", 
                         "content": prompt
                     }
                 ],
-                max_tokens=4000,
+                max_tokens=6000,  # Increased from 4000 to ensure complete responses
                 temperature=0.1  # Low temperature for consistent medical reasoning
             )
             
@@ -146,50 +146,93 @@ Provide ONLY the JSON response, no additional text."""
             # Extract JSON from response
             json_start = response_text.find('{')
             json_end = response_text.rfind('}') + 1
+            
+            if json_start == -1 or json_end == 0:
+                raise ValueError("No JSON found in response")
+            
             json_str = response_text[json_start:json_end]
+            
+            # Check if JSON is complete (basic validation)
+            if json_str.count('{') != json_str.count('}'):
+                print(f"⚠️  Warning: Incomplete JSON detected in chairman response")
+                print(f"📝 Raw response length: {len(response_text)} characters")
+                print(f"🔍 JSON portion: {json_str[:200]}...")
+                
+                # Try to fix incomplete JSON by adding missing closing braces
+                open_braces = json_str.count('{') - json_str.count('}')
+                if open_braces > 0:
+                    json_str += '}' * open_braces
+                    print(f"🔧 Attempted to fix JSON by adding {open_braces} closing braces")
             
             parsed_data = json.loads(json_str)
             
+            # Ensure all required fields have values, with fallbacks for incomplete responses
             return ChairmanOutput(
                 case_id=input_data.case_id,
                 patient_code=input_data.patient_code,
-                executive_summary=parsed_data.get('executive_summary', ''),
-                primary_diagnosis=parsed_data.get('primary_diagnosis', ''),
-                differential_diagnoses=parsed_data.get('differential_diagnoses', []),
-                radiology_synthesis=parsed_data.get('radiology_synthesis', ''),
-                clinical_synthesis=parsed_data.get('clinical_synthesis', ''),
-                evidence_synthesis=parsed_data.get('evidence_synthesis', ''),
-                risk_synthesis=parsed_data.get('risk_synthesis', ''),
-                immediate_actions=parsed_data.get('immediate_actions', []),
-                follow_up_plan=parsed_data.get('follow_up_plan', []),
+                executive_summary=parsed_data.get('executive_summary', 'Executive summary not fully generated - manual review recommended'),
+                primary_diagnosis=parsed_data.get('primary_diagnosis', 'Primary diagnosis pending - requires manual review'),
+                differential_diagnoses=parsed_data.get('differential_diagnoses', ['Manual review required']),
+                radiology_synthesis=parsed_data.get('radiology_synthesis', 'Radiology synthesis incomplete'),
+                clinical_synthesis=parsed_data.get('clinical_synthesis', 'Clinical synthesis incomplete'),
+                evidence_synthesis=parsed_data.get('evidence_synthesis', 'Evidence synthesis incomplete'),
+                risk_synthesis=parsed_data.get('risk_synthesis', 'Risk synthesis incomplete'),
+                immediate_actions=parsed_data.get('immediate_actions', ['Complete manual review of all findings', 'Consult with senior physician']),
+                follow_up_plan=parsed_data.get('follow_up_plan', ['Schedule follow-up appointment', 'Monitor patient condition']),
                 specialist_referrals=parsed_data.get('specialist_referrals', []),
                 confidence_level=float(parsed_data.get('confidence_level', 0.5)),
                 consensus_score=float(parsed_data.get('consensus_score', 0.5)),
                 urgency_level=parsed_data.get('urgency_level', 'routine'),
-                chairman_reasoning=parsed_data.get('chairman_reasoning', ''),
-                quality_flags=parsed_data.get('quality_flags', [])
+                chairman_reasoning=parsed_data.get('chairman_reasoning', 'Chairman reasoning incomplete - manual review required'),
+                quality_flags=parsed_data.get('quality_flags', ['Incomplete AI response', 'Manual review recommended'])
             )
             
-        except Exception as e:
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON parsing error in chairman response: {str(e)}")
+            print(f"📝 Raw response: {response_text[:500]}...")
+            
             # Fallback parsing if JSON parsing fails
             return ChairmanOutput(
                 case_id=input_data.case_id,
                 patient_code=input_data.patient_code,
-                executive_summary="Chairman analysis completed with parsing issues",
+                executive_summary="Chairman analysis completed with JSON parsing issues - manual review recommended",
                 primary_diagnosis="Manual review recommended due to parsing error",
-                differential_diagnoses=["Parsing error", "Manual review needed"],
-                radiology_synthesis="Response parsing failed",
-                clinical_synthesis="Response parsing failed",
-                evidence_synthesis="Response parsing failed", 
-                risk_synthesis="Response parsing failed",
-                immediate_actions=["Manual review of chairman analysis"],
-                follow_up_plan=["Retry with improved parsing"],
+                differential_diagnoses=["JSON parsing error", "Manual review needed"],
+                radiology_synthesis="Response parsing failed - see raw AI output",
+                clinical_synthesis="Response parsing failed - see raw AI output",
+                evidence_synthesis="Response parsing failed - see raw AI output", 
+                risk_synthesis="Response parsing failed - see raw AI output",
+                immediate_actions=["Manual review of chairman analysis", "Check raw AI response for complete findings"],
+                follow_up_plan=["Retry analysis with improved parsing", "Manual physician review"],
                 specialist_referrals=[],
                 confidence_level=0.3,
                 consensus_score=0.3,
                 urgency_level="routine",
-                chairman_reasoning=f"Chairman analysis completed but response parsing failed: {str(e)}",
-                quality_flags=["Parsing error", "Manual review recommended"]
+                chairman_reasoning=f"Chairman analysis completed but JSON parsing failed: {str(e)}. Raw response available for manual review.",
+                quality_flags=["JSON parsing error", "Manual review recommended", "Raw AI response available"]
+            )
+        except Exception as e:
+            print(f"❌ Unexpected error in chairman response parsing: {str(e)}")
+            
+            # General fallback
+            return ChairmanOutput(
+                case_id=input_data.case_id,
+                patient_code=input_data.patient_code,
+                executive_summary="Chairman analysis encountered unexpected error - manual review required",
+                primary_diagnosis="Manual review recommended due to system error",
+                differential_diagnoses=["System error", "Manual review needed"],
+                radiology_synthesis="Analysis failed due to system error",
+                clinical_synthesis="Analysis failed due to system error",
+                evidence_synthesis="Analysis failed due to system error", 
+                risk_synthesis="Analysis failed due to system error",
+                immediate_actions=["Manual review by senior physician required", "System troubleshooting needed"],
+                follow_up_plan=["Retry analysis with working system", "Manual physician assessment"],
+                specialist_referrals=[],
+                confidence_level=0.1,
+                consensus_score=0.1,
+                urgency_level="routine",
+                chairman_reasoning=f"Chairman analysis encountered an unexpected error: {str(e)}",
+                quality_flags=["System error", "Manual review required", "Technical issue"]
             )
     
     def _save_to_database(self, output: ChairmanOutput):
