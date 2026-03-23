@@ -1,7 +1,7 @@
 """
 FastAPI application for Radiology AI Multi-Agent System with LangGraph Orchestration
 """
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
@@ -182,8 +182,8 @@ async def analyze_xray(request: AnalysisRequest, db: Session = Depends(get_db)):
 @app.post("/upload-analyze")
 async def upload_and_analyze(
     file: UploadFile = File(...),
-    patient_code: str = "UNKNOWN",
-    additional_info: Optional[str] = None,
+    patient_code: str = Form("UNKNOWN"),
+    additional_info: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """Upload X-ray image and analyze"""
@@ -400,8 +400,8 @@ async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depe
 @app.post("/upload-complete-pipeline")
 async def upload_complete_pipeline(
     file: UploadFile = File(...),
-    patient_code: str = "UNKNOWN",
-    additional_info: Optional[str] = None,
+    patient_code: str = Form("UNKNOWN"),
+    additional_info: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """Upload image and run complete 5-agent medical pipeline using integrated LangGraph orchestration"""
@@ -500,10 +500,10 @@ async def upload_complete_pipeline(
 @app.post("/upload-complete-pipeline-with-chairman")
 async def upload_complete_pipeline_with_chairman(
     file: UploadFile = File(...),
-    patient_code: str = "UNKNOWN",
-    additional_info: Optional[str] = None,
-    patient_history: Optional[str] = None,
-    thread_id: Optional[str] = None,
+    patient_code: str = Form("UNKNOWN"),
+    additional_info: Optional[str] = Form(None),
+    patient_history: Optional[str] = Form(None),
+    thread_id: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """Upload image and run complete 5-agent medical pipeline using integrated LangGraph orchestration"""

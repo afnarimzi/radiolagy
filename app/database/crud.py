@@ -197,25 +197,42 @@ class RadiologyDB:
     
     # Complete case operations
     def get_complete_case(self, case_id: str) -> Dict[str, Any]:
-        """Get complete case information"""
+        """Get complete case information with all multi-agent outputs"""
         case_input = self.get_case_input(case_id)
-        case_output = self.get_case_output(case_id)
-        report = self.get_medical_report(case_id)
-        
         if not case_input:
             return None
+            
+        # Get all agent outputs for this case
+        outputs = self.db.query(PatientOutput).filter(PatientOutput.case_id == case_id).all()
+        
+        # Aggregate outputs by agent type
+        agent_outputs = {output.agent_type: output.output_data for output in outputs}
+        
+        # Get medical report
+        report = self.get_medical_report(case_id)
         
         patient = self.db.query(Patient).filter(Patient.id == case_input.patient_id).first()
         
+        # Map to the structure expected by the frontend
+        # The frontend expects radiology_analysis, clinical_analysis, evidence_research, etc.
         return {
             'case_id': case_id,
             'patient_code': patient.patient_code if patient else None,
             'input_data': case_input.input_data,
             'image_path': case_input.image_path,
             'additional_info': case_input.additional_info,
-            'output_data': case_output.output_data if case_output else None,
-            'confidence': case_output.confidence if case_output else None,
-            'processing_time': case_output.processing_time if case_output else None,
+            'patient_history': case_input.input_data.get('patient_history', ''),
+            
+            # Formatted agent results
+            'radiology_analysis': agent_outputs.get('radiology'),
+            'clinical_analysis': agent_outputs.get('clinical'),
+            'evidence_research': agent_outputs.get('evidence'),
+            'risk_assessment': agent_outputs.get('risk'),
+            'chairman_report': agent_outputs.get('chairman'),
+            
+            # Legacy/Overall fields
+            'confidence': agent_outputs.get('chairman', {}).get('confidence') or agent_outputs.get('radiology', {}).get('confidence'),
+            'processing_time': sum(o.processing_time for o in outputs if o.processing_time) if outputs else None,
             'report_content': report.report_content if report else None,
             'report_status': report.report_status if report else None,
             'created_at': case_input.created_at

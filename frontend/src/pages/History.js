@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   FileText, 
   Search, 
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 
 const History = () => {
+  const navigate = useNavigate();
   const [analyses, setAnalyses] = useState([]);
   const [filteredAnalyses, setFilteredAnalyses] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -162,7 +164,11 @@ const History = () => {
       <div className="space-y-4">
         {filteredAnalyses.length > 0 ? (
           filteredAnalyses.map((analysis) => (
-            <div key={analysis.case_id} className="card hover:shadow-lg transition-shadow duration-200">
+            <div 
+              key={analysis.case_id} 
+              onClick={() => navigate(`/analysis/${analysis.case_id}`)}
+              className="card hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-medical-100 rounded-lg flex items-center justify-center">
@@ -205,14 +211,23 @@ const History = () => {
                   )}
 
                   <button
-                    onClick={() => downloadReport(analysis.case_id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      downloadReport(analysis.case_id);
+                    }}
                     className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                     title="Download Report"
                   >
                     <Download className="w-4 h-4" />
                   </button>
 
-                  <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200">
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/analysis/${analysis.case_id}`);
+                    }}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                  >
                     <Eye className="w-4 h-4" />
                   </button>
 

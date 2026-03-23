@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 const AnalysisContext = createContext();
 
@@ -21,11 +21,11 @@ export const AnalysisProvider = ({ children }) => {
     patientHistory: ''
   });
 
-  const updateAnalysis = (updates) => {
+  const updateAnalysis = useCallback((updates) => {
     setCurrentAnalysis(prev => ({ ...prev, ...updates }));
-  };
+  }, []);
 
-  const clearAnalysis = () => {
+  const clearAnalysis = useCallback(() => {
     setCurrentAnalysis({
       results: null,
       progress: {},
@@ -35,9 +35,9 @@ export const AnalysisProvider = ({ children }) => {
       additionalInfo: '',
       patientHistory: ''
     });
-  };
+  }, []);
 
-  const startNewAnalysis = () => {
+  const startNewAnalysis = useCallback(() => {
     setCurrentAnalysis(prev => ({
       ...prev,
       results: null,
@@ -50,15 +50,17 @@ export const AnalysisProvider = ({ children }) => {
       },
       isAnalyzing: true
     }));
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    currentAnalysis,
+    updateAnalysis,
+    clearAnalysis,
+    startNewAnalysis
+  }), [currentAnalysis, updateAnalysis, clearAnalysis, startNewAnalysis]);
 
   return (
-    <AnalysisContext.Provider value={{
-      currentAnalysis,
-      updateAnalysis,
-      clearAnalysis,
-      startNewAnalysis
-    }}>
+    <AnalysisContext.Provider value={contextValue}>
       {children}
     </AnalysisContext.Provider>
   );

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { 
   Upload, 
@@ -13,8 +14,40 @@ import AnalysisProgress from '../components/AnalysisProgress';
 import AnalysisResults from '../components/AnalysisResults';
 
 const Analysis = () => {
+  const { caseId } = useParams();
   const { currentAnalysis, updateAnalysis, startNewAnalysis } = useAnalysis();
   
+  // Fetch results if caseId is provided in URL
+  useEffect(() => {
+    if (caseId && (!currentAnalysis.results || currentAnalysis.results.case_id !== caseId)) {
+      const fetchResults = async () => {
+        try {
+          const response = await fetch(`/cases/${caseId}`);
+          if (response.ok) {
+            const results = await response.json();
+            updateAnalysis({
+              results: results,
+              isAnalyzing: false,
+              selectedFile: null,
+              patientCode: results.patient_code,
+              additionalInfo: results.additional_info || '',
+              patientHistory: results.patient_history || ''
+            });
+            
+            // Also sync local state
+            setPatientCode(results.patient_code);
+            setAdditionalInfo(results.additional_info || '');
+            setPatientHistory(results.patient_history || '');
+          }
+        } catch (error) {
+          console.error('Failed to fetch case results:', error);
+        }
+      };
+      
+      fetchResults();
+    }
+  }, [caseId, updateAnalysis, currentAnalysis.results]);
+
   const [selectedFile, setSelectedFile] = useState(currentAnalysis.selectedFile);
   const [patientCode, setPatientCode] = useState(currentAnalysis.patientCode);
   const [additionalInfo, setAdditionalInfo] = useState(currentAnalysis.additionalInfo);
@@ -202,9 +235,10 @@ const Analysis = () => {
         </p>
       </div>
 
-      {/* Upload Section */}
-      <div className="card">
-        <h2 className="text-xl font-semibold text-gray-900 mb-6">Upload X-ray Image</h2>
+      {/* Upload Section - Hide when viewing results unless explicitly requested */}
+      {(!analysisResults || isAnalyzing) && (
+        <div className="card">
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">Upload X-ray Image</h2>
         
         {/* File Upload */}
         <div
@@ -338,8 +372,9 @@ const Analysis = () => {
               <span>New Analysis</span>
             </button>
           )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Analysis Progress */}
       {(isAnalyzing || analysisResults) && (

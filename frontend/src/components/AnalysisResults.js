@@ -279,27 +279,30 @@ const AnalysisResults = ({ results }) => {
               <div className="space-y-2">
                 {results.evidence_research.citations.slice(0, 3).map((citation, index) => (
                   <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                    <h5 className="font-medium text-gray-900 text-sm">{citation.title}</h5>
-                    <p className="text-xs text-gray-600 mt-1">{citation.authors}</p>
-                    {citation.url && (
-                      <a 
-                        href={citation.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center space-x-1 text-xs text-purple-600 hover:text-purple-700 mt-1"
-                        onClick={(e) => {
-                          // Check if URL is valid
-                          try {
-                            new URL(citation.url);
-                          } catch {
-                            e.preventDefault();
-                            alert('This is a simulated citation. In a real system, this would link to the actual research paper.');
-                          }
+                    <h5 className="font-medium text-gray-900 text-sm">
+                      {citation.title}
+                    </h5>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {Array.isArray(citation.authors) 
+                        ? citation.authors.join(', ') 
+                        : citation.authors}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {citation.journal} — {citation.year}
+                    </p>
+                    {(citation.pmid || citation.url) && (
+                      <button
+                        onClick={() => {
+                          const url = citation.pmid 
+                            ? `https://pubmed.ncbi.nlm.nih.gov/${citation.pmid}/`
+                            : citation.url;
+                          window.open(url, '_blank', 'noopener,noreferrer');
                         }}
+                        className="inline-flex items-center space-x-1 text-xs text-purple-600 hover:text-purple-700 mt-1 cursor-pointer"
                       >
                         <span>View Paper</span>
                         <ExternalLink className="w-3 h-3" />
-                      </a>
+                      </button>
                     )}
                   </div>
                 ))}
