@@ -131,7 +131,7 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
                 response_text = response_text[:-3]
             
             # Parse JSON
-            result = json.loads(response_text.strip())
+            result = json.loads(response_text)
             
             # Validate required fields
             required_fields = ['risk_level', 'risk_score', 'recommended_action', 'urgency_timeline', 'reasoning']

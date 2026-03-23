@@ -111,7 +111,7 @@ Be thorough, specific, and use proper medical terminology. If you see abnormalit
                 [prompt, image],
                 generation_config=genai.types.GenerationConfig(
                     temperature=0.2,
-                    max_output_tokens=2000,
+                    max_output_tokens=4096,
                     candidate_count=1
                 )
             )
@@ -121,7 +121,7 @@ Be thorough, specific, and use proper medical terminology. If you see abnormalit
             
             # Parse the medical report (no longer expecting JSON)
             # Extract key information from the professional report
-            findings_text = analysis_text
+            findings_text = analysis_text.replace("**", "")
             
             # Try to extract structured information from the report
             abnormalities = []
@@ -247,13 +247,23 @@ Be thorough, specific, and use proper medical terminology. If you see abnormalit
                         "analysis_timestamp": findings.timestamp.isoformat()
                     }
                     
-                    case_input = radiology_db.create_case_input(
-                        case_id=findings.case_id,
-                        patient_code=xray_input.patient_code or "UNKNOWN",
-                        input_data=input_data,
-                        image_path=xray_input.image_path,
-                        additional_info=xray_input.additional_info
-                    )
+                    if xray_input.thread_id:
+                        case_input = radiology_db.create_case_input_with_thread(
+                            case_id=findings.case_id,
+                            patient_code=xray_input.patient_code or "UNKNOWN",
+                            input_data=input_data,
+                            thread_id=xray_input.thread_id,
+                            image_path=xray_input.image_path,
+                            additional_info=xray_input.additional_info
+                        )
+                    else:
+                        case_input = radiology_db.create_case_input(
+                            case_id=findings.case_id,
+                            patient_code=xray_input.patient_code or "UNKNOWN",
+                            input_data=input_data,
+                            image_path=xray_input.image_path,
+                            additional_info=xray_input.additional_info
+                        )
                     
                     # Save analysis output
                     output_data = {

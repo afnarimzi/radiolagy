@@ -5,7 +5,7 @@ Orchestrates all 5 agents: Radiology → Clinical + Evidence + Risk → Chairman
 import asyncio
 import time
 import uuid
-from typing import Dict, List, Optional, TypedDict, Annotated
+from typing import Any, Dict, List, Optional, TypedDict, Annotated
 import operator
 
 from langgraph.graph import StateGraph, END
@@ -29,6 +29,7 @@ class MedicalPipelineState(TypedDict):
     case_id: Optional[str]
     additional_info: Optional[str]
     patient_history: Optional[str]
+    thread_id: Optional[str]
     
     # Radiology Results
     radiology_findings: Optional[str]
@@ -74,7 +75,7 @@ class MedicalPipelineState(TypedDict):
     chairman_complete: Optional[bool]
     
     # Pipeline Management
-    stage_timings: Optional[dict]
+    stage_timings: Annotated[dict, lambda x, y: {**x, **y}]
     errors: Annotated[List[str], operator.add]
     pipeline_complete: Optional[bool]
 
@@ -122,11 +123,12 @@ class MedicalPipeline:
                 image_path=state["image_path"],
                 patient_code=state["patient_code"],
                 case_id=state.get("case_id") or str(uuid.uuid4()),
-                additional_info=state.get("additional_info", "")
+                additional_info=state.get("additional_info", ""),
+                thread_id=state.get("thread_id") 
             )
             
             # Run radiology analysis
-            result = await self.radiology_agent.analyze(xray_input, save_to_db=False)
+            result = await self.radiology_agent.analyze(xray_input, save_to_db=True)
             elapsed = time.time() - start_time
             
             print(f"   ✅ Radiology completed in {elapsed:.2f}s")
@@ -140,7 +142,7 @@ class MedicalPipeline:
                 "image_quality": result.image_quality,
                 "radiology_recommendations": result.recommendations,
                 "radiology_complete": True,
-                "stage_timings": {"radiology": round(elapsed, 2)},
+                "stage_timings": {"radiology": round(float(elapsed), 2)},
                 "errors": []
             }
             
@@ -149,7 +151,7 @@ class MedicalPipeline:
             print(f"   ❌ Radiology failed in {elapsed:.2f}s: {str(e)}")
             return {
                 "radiology_complete": False,
-                "stage_timings": {"radiology": round(elapsed, 2)},
+                "stage_timings": {"radiology": round(float(elapsed), 2)},
                 "errors": [f"Radiology error: {str(e)}"]
             }
     
@@ -184,20 +186,21 @@ class MedicalPipeline:
         
         # Run all three agents in parallel
         try:
-            clinical_task = self.clinical_agent.analyze(clinical_input, save_to_db=False)
-            evidence_task = self.evidence_agent.analyze(evidence_input, save_to_db=False)
-            risk_task = self.risk_agent.assess_risk(risk_input, save_to_db=False)
+            clinical_task = self.clinical_agent.analyze(clinical_input, save_to_db=True)
+            evidence_task = self.evidence_agent.analyze(evidence_input, save_to_db=True)
+            risk_task = self.risk_agent.assess_risk(risk_input, save_to_db=True)
             
-            clinical_result, evidence_result, risk_result = await asyncio.gather(
+            results = await asyncio.gather(
                 clinical_task, evidence_task, risk_task, return_exceptions=True
             )
+            clinical_result, evidence_result, risk_result = results
             
             elapsed = time.time() - start_time
             print(f"   ✅ Parallel analysis completed in {elapsed:.2f}s")
             
             # Process results
-            output = {
-                "stage_timings": {"parallel_analysis": round(elapsed, 2)},
+            output: Dict[str, Any] = {
+                "stage_timings": {"parallel_analysis": round(float(elapsed), 2)},
                 "errors": []
             }
             
@@ -206,12 +209,13 @@ class MedicalPipeline:
                 output["errors"].append(f"Clinical error: {str(clinical_result)}")
                 output["clinical_complete"] = False
             else:
+                cr: Any = clinical_result
                 output.update({
-                    "differential_diagnosis": clinical_result.differential_diagnosis,
-                    "clinical_reasoning": clinical_result.reasoning,
-                    "clinical_urgency": clinical_result.urgency,
-                    "clinical_followup": clinical_result.recommended_followup,
-                    "clinical_confidence": clinical_result.confidence,
+                    "differential_diagnosis": cr.differential_diagnosis,
+                    "clinical_reasoning": cr.reasoning,
+                    "clinical_urgency": cr.urgency,
+                    "clinical_followup": cr.recommended_followup,
+                    "clinical_confidence": cr.confidence,
                     "clinical_complete": True
                 })
             
@@ -220,11 +224,12 @@ class MedicalPipeline:
                 output["errors"].append(f"Evidence error: {str(evidence_result)}")
                 output["evidence_complete"] = False
             else:
+                er: Any = evidence_result
                 output.update({
-                    "evidence_summary": evidence_result.evidence_summary,
-                    "search_keywords": evidence_result.search_keywords,
-                    "citations": [c.dict() for c in evidence_result.citations],
-                    "total_papers": evidence_result.total_papers_found,
+                    "evidence_summary": er.evidence_summary,
+                    "search_keywords": er.search_keywords,
+                    "citations": [c.dict() for c in er.citations],
+                    "total_papers": er.total_papers_found,
                     "evidence_complete": True
                 })
             
@@ -233,14 +238,15 @@ class MedicalPipeline:
                 output["errors"].append(f"Risk error: {str(risk_result)}")
                 output["risk_complete"] = False
             else:
+                rr: Any = risk_result
                 output.update({
-                    "risk_level": risk_result.risk_level.value,
-                    "risk_score": risk_result.risk_score,
-                    "risk_action": risk_result.recommended_action.value,
-                    "risk_timeline": risk_result.urgency_timeline,
-                    "risk_factors": risk_result.risk_factors,
-                    "critical_findings": risk_result.critical_findings,
-                    "next_steps": risk_result.next_steps,
+                    "risk_level": rr.risk_level.value,
+                    "risk_score": rr.risk_score,
+                    "risk_action": rr.recommended_action.value,
+                    "risk_timeline": rr.urgency_timeline,
+                    "risk_factors": rr.risk_factors,
+                    "critical_findings": rr.critical_findings,
+                    "next_steps": rr.next_steps,
                     "risk_complete": True
                 })
             
@@ -253,7 +259,7 @@ class MedicalPipeline:
                 "clinical_complete": False,
                 "evidence_complete": False,
                 "risk_complete": False,
-                "stage_timings": {"parallel_analysis": round(elapsed, 2)},
+                "stage_timings": {"parallel_analysis": round(float(elapsed), 2)},
                 "errors": [f"Parallel analysis error: {str(e)}"]
             }
     
@@ -352,7 +358,8 @@ class MedicalPipeline:
         image_path: str, 
         patient_code: str = "UNKNOWN",
         additional_info: Optional[str] = None,
-        patient_history: Optional[str] = None
+        patient_history: Optional[str] = None,
+        thread_id: Optional[str] = None
     ) -> Dict:
         """Run the complete medical AI pipeline"""
         print("\n" + "="*60)
@@ -362,6 +369,13 @@ class MedicalPipeline:
         
         pipeline_start = time.time()
         
+        # 1. Generate thread_id if not provided
+        thread_id = thread_id or str(uuid.uuid4())
+        
+        # 2. Fetch patient history if not provided
+        if not patient_history and patient_code != "UNKNOWN":
+            patient_history = self._get_patient_history(patient_code)
+        
         # Initial state
         initial_state = MedicalPipelineState(
             image_path=image_path,
@@ -369,6 +383,7 @@ class MedicalPipeline:
             case_id=str(uuid.uuid4()),
             additional_info=additional_info,
             patient_history=patient_history,
+            thread_id=thread_id,
             radiology_findings=None,
             abnormalities=None,
             anatomical_structures=None,
@@ -440,7 +455,29 @@ class MedicalPipeline:
             for error in final_state["errors"]:
                 print(f"    - {error}")
         
+        # Add thread_id to final state if it was updated during run
+        if "thread_id" not in final_state:
+            final_state["thread_id"] = thread_id
+            
         return final_state
+
+    def _get_patient_history(self, patient_code: str) -> str:
+        """Fetch patient history from database contextually"""
+        try:
+            from app.database.database import SessionLocal
+            from app.database.crud import RadiologyDB
+            
+            db = SessionLocal()
+            try:
+                radiology_db = RadiologyDB(db)
+                history = radiology_db.get_patient_history_context(patient_code)
+                print(f"   ℹ️  Fetched history for {patient_code}")
+                return history
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"   ⚠️  Error fetching history: {e}")
+            return "No previous visits found."
 
 
 # Global pipeline instance

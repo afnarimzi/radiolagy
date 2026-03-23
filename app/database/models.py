@@ -27,6 +27,7 @@ class PatientInput(Base):
     input_data = Column(JSON, nullable=False)
     image_path = Column(String(500))
     additional_info = Column(Text)
+    thread_id = Column(String(100), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class PatientOutput(Base):

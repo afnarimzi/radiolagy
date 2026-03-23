@@ -319,6 +319,7 @@ async def analyze_and_assess_risk(request: AnalysisRequest, db: Session = Depend
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Complete analysis failed: {str(e)}")
 
+@app.post("/analyze-complete-pipeline") 
 async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depends(get_db)):
     """Run complete 5-agent pipeline using integrated LangGraph orchestration on existing image"""
     try:
@@ -339,6 +340,7 @@ async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depe
             "message": "Complete 5-agent medical pipeline completed successfully",
             "case_id": pipeline_result.get("case_id"),
             "patient_code": request.patient_code,
+            "thread_id": pipeline_result.get("thread_id"),
             "pipeline_status": "completed",
             "orchestration": "Integrated LangGraph StateGraph",
 
@@ -395,6 +397,7 @@ async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depe
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Medical pipeline failed: {str(e)}")
 
+@app.post("/upload-complete-pipeline")
 async def upload_complete_pipeline(
     file: UploadFile = File(...),
     patient_code: str = "UNKNOWN",
@@ -437,6 +440,7 @@ async def upload_complete_pipeline(
             },
             "case_id": pipeline_result.get("case_id"),
             "patient_code": patient_code,
+            "thread_id": pipeline_result.get("thread_id"),
             "pipeline_status": "completed",
             "orchestration": "Integrated LangGraph StateGraph",
 
@@ -499,6 +503,7 @@ async def upload_complete_pipeline_with_chairman(
     patient_code: str = "UNKNOWN",
     additional_info: Optional[str] = None,
     patient_history: Optional[str] = None,
+    thread_id: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Upload image and run complete 5-agent medical pipeline using integrated LangGraph orchestration"""
@@ -524,7 +529,8 @@ async def upload_complete_pipeline_with_chairman(
             image_path=file_path,
             patient_code=patient_code,
             additional_info=additional_info,
-            patient_history=patient_history
+            patient_history=patient_history,
+            thread_id=thread_id
         )
 
         # Step 3: Return comprehensive results
@@ -538,6 +544,7 @@ async def upload_complete_pipeline_with_chairman(
             },
             "case_id": pipeline_result.get("case_id"),
             "patient_code": patient_code,
+            "thread_id": pipeline_result.get("thread_id"),
             "pipeline_status": "completed",
             "orchestration": "Integrated LangGraph StateGraph",
 
@@ -593,6 +600,36 @@ async def upload_complete_pipeline_with_chairman(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Medical pipeline failed: {str(e)}")
+
+@app.get("/patients/{patient_code}/history")
+async def get_patient_visit_history(patient_code: str, db: Session = Depends(get_db)):
+    """Get patient history context list"""
+    radiology_db = RadiologyDB(db)
+    cases = radiology_db.get_patient_cases(patient_code)
+    
+    if not cases:
+        raise HTTPException(status_code=404, detail="No history found for this patient")
+        
+    return {
+        "patient_code": patient_code,
+        "total_visits": len(cases),
+        "history": cases
+    }
+
+@app.get("/threads/{thread_id}")
+async def get_thread_run_history(thread_id: str, db: Session = Depends(get_db)):
+    """Get history of all runs for a specific thread_id"""
+    radiology_db = RadiologyDB(db)
+    history = radiology_db.get_thread_history(thread_id)
+    
+    if not history:
+        raise HTTPException(status_code=404, detail="No history found for this thread ID")
+        
+    return {
+        "thread_id": thread_id,
+        "total_runs": len(history),
+        "runs": history
+    }
 
 @app.get("/risk-assessments/{case_id}")
 async def get_risk_assessment(case_id: str, db: Session = Depends(get_db)):

@@ -53,6 +53,24 @@ class RadiologyDB:
         self.db.refresh(case_input)
         return case_input
     
+    def create_case_input_with_thread(self, case_id: str, patient_code: str, input_data: Dict[str, Any], 
+                                    thread_id: str = None, image_path: str = None, additional_info: str = None) -> PatientInput:
+        """Create a new case with input data and thread ID"""
+        patient = self.get_or_create_patient(patient_code)
+        
+        case_input = PatientInput(
+            case_id=case_id,
+            patient_id=patient.id,
+            input_data=input_data,
+            thread_id=thread_id,
+            image_path=image_path,
+            additional_info=additional_info
+        )
+        self.db.add(case_input)
+        self.db.commit()
+        self.db.refresh(case_input)
+        return case_input
+    
     def get_case_input(self, case_id: str) -> Optional[PatientInput]:
         """Get case input by case ID"""
         return self.db.query(PatientInput).filter(PatientInput.case_id == case_id).first()
@@ -122,6 +140,28 @@ class RadiologyDB:
     def get_thread(self, thread_id: str) -> Optional[AgentThread]:
         """Get thread by thread ID"""
         return self.db.query(AgentThread).filter(AgentThread.thread_id == thread_id).first()
+
+    def get_thread_history(self, thread_id: str) -> List[Dict[str, Any]]:
+        """Get all cases linked to this thread_id with agent outputs"""
+        try:
+            cases = self.db.query(PatientInput).filter(PatientInput.thread_id == thread_id).order_by(PatientInput.created_at).all()
+            
+            result = []
+            for case in cases:
+                outputs = self.db.query(PatientOutput).filter(PatientOutput.case_id == case.case_id).all()
+                agents_run = [o.agent_type for o in outputs]
+                
+                result.append({
+                    "case_id": case.case_id,
+                    "thread_id": case.thread_id,
+                    "date": case.created_at.isoformat(),
+                    "agents_run": agents_run,
+                    "results": {o.agent_type: o.output_data for o in outputs}
+                })
+            return result
+        except Exception as e:
+            print(f"Error fetching thread history: {e}")
+            return []
     
     # Medical report operations
     def create_medical_report(self, case_id: str, report_content: str, 
@@ -208,6 +248,58 @@ class RadiologyDB:
                 result.append(complete_case)
         
         return result
+
+    def get_patient_history_context(self, patient_code: str, limit: int = 3) -> str:
+        """Fetch last N cases and format for LLM context"""
+        try:
+            patient = self.get_patient_by_code(patient_code)
+            if not patient:
+                return "No previous visits found."
+            
+            cases = self.db.query(PatientInput).filter(
+                PatientInput.patient_id == patient.id
+            ).order_by(desc(PatientInput.created_at)).limit(limit).all()
+            
+            if not cases:
+                return "No previous visits found."
+            
+            history_parts = []
+            # Reverse to show in chronological order (oldest to newest)
+            for i, case in enumerate(reversed(cases)):
+                # Get radiology and chairman outputs
+                outputs = self.db.query(PatientOutput).filter(
+                    PatientOutput.case_id == case.case_id,
+                    PatientOutput.agent_type.in_(['radiology', 'chairman'])
+                ).all()
+                
+                rad_out = next((o for o in outputs if o.agent_type == 'radiology'), None)
+                chair_out = next((o for o in outputs if o.agent_type == 'chairman'), None)
+                
+                if not rad_out and not chair_out:
+                    continue
+                
+                date_str = case.created_at.strftime("%Y-%m-%d")
+                part = f"Visit {i+1} ({date_str}):\n"
+                
+                if rad_out:
+                    abnormalities = rad_out.output_data.get('abnormalities', [])
+                    part += f"- Abnormalities: {', '.join(abnormalities) if abnormalities else 'None'}\n"
+                
+                if chair_out:
+                    diag = chair_out.output_data.get('primary_diagnosis', 'Unknown')
+                    urgency = chair_out.output_data.get('urgency_level', 'Unknown')
+                    summary = chair_out.output_data.get('executive_summary', '')[:300]
+                    part += f"- Diagnosis: {diag}\n"
+                    part += f"- Urgency: {urgency}\n"
+                    part += f"- Summary: {summary}...\n"
+                
+                history_parts.append(part)
+            
+            return "\n".join(history_parts) if history_parts else "No previous visits found."
+            
+        except Exception as e:
+            print(f"Error in get_patient_history_context: {e}")
+            return "No previous visits found."
 
 
 # Legacy CRUD classes for backward compatibility (simplified)

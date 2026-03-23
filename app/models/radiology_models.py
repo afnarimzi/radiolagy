@@ -14,6 +14,7 @@ class XrayInput(BaseModel):
     patient_code: Optional[str] = Field(None, description="Patient identifier")
     case_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique case identifier")
     additional_info: Optional[str] = Field(None, description="Additional clinical information")
+    thread_id: Optional[str] = None
 
 class RadiologyFindings(BaseModel):
     """Output model for radiology analysis"""
