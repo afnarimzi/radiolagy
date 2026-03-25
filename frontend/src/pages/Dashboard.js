@@ -25,7 +25,7 @@ const Dashboard = () => {
 
   const fetchSystemStats = async () => {
     try {
-      const response = await fetch('/stats');
+      const response = await fetch('/api/stats');
       if (response.ok) {
         const data = await response.json();
         setSystemStats({
@@ -54,7 +54,7 @@ const Dashboard = () => {
 
   const fetchRecentAnalyses = async () => {
     try {
-      const response = await fetch('/cases?limit=5');
+      const response = await fetch('/api/cases?limit=5');
       if (response.ok) {
         const data = await response.json();
         setRecentAnalyses(data || []);

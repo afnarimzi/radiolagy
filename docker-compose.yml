@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  database:
+    image: postgres:15-alpine
+    container_name: radiology_db
+    environment:
+      POSTGRES_DB: radiology_ai
+      POSTGRES_USER: radiology_user
+      POSTGRES_PASSWORD: radiology_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radiology_user -d radiology_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - radiology_network
+
+  # Redis for Caching (Optional but good for production)
+  redis:
+    image: redis:7-alpine
+    container_name: radiology_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - radiology_network
+
+  # Backend API
+  backend:
+    build: .
+    container_name: radiology_backend
+    environment:
+      - DATABASE_URL=postgresql://radiology_user:radiology_pass@database:5432/radiology_ai
+      - REDIS_URL=redis://redis:6379
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - RISK_AGENT_API_KEY=${RISK_AGENT_API_KEY}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./test_images:/app/test_images
+    ports:
+      - "8000:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - radiology_network
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build: ./frontend
+    container_name: radiology_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - radiology_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  radiology_network:
+    driver: bridge

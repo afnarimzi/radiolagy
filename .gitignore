@@ -162,3 +162,16 @@ celerybeat-schedule
 .mypy_cache/
 .dmypy.json
 dmypy.json
+# Docker
+.dockerignore
+.env.docker
+
+# Docker volumes
+postgres_data/
+redis_data/
+
+# Test and debug files
+test_*.py
+*_debug.py
+*_output.txt
+check_*.py

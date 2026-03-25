@@ -32,7 +32,7 @@ const History = () => {
 
   const fetchAnalysisHistory = async () => {
     try {
-      const response = await fetch('/cases?limit=50');
+      const response = await fetch('/api/cases?limit=50');
       if (response.ok) {
         const data = await response.json();
         setAnalyses(data || []);

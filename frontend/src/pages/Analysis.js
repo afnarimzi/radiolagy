@@ -22,7 +22,7 @@ const Analysis = () => {
     if (caseId && (!currentAnalysis.results || currentAnalysis.results.case_id !== caseId)) {
       const fetchResults = async () => {
         try {
-          const response = await fetch(`/cases/${caseId}`);
+          const response = await fetch(`/api/cases/${caseId}`);
           if (response.ok) {
             const results = await response.json();
             updateAnalysis({
@@ -87,69 +87,8 @@ const Analysis = () => {
     setSelectedFile(null);
   };
 
-  const simulateRealTimeProgress = () => {
-    // Simulate radiology agent completion after 3 seconds
-    setTimeout(() => {
-      updateAnalysis({
-        progress: {
-          ...currentAnalysis.progress,
-          radiology: { status: 'completed', time: '14.1s' }
-        }
-      });
-    }, 3000);
-
-    // Simulate clinical agent completion after 5 seconds
-    setTimeout(() => {
-      updateAnalysis({
-        progress: {
-          ...currentAnalysis.progress,
-          radiology: { status: 'completed', time: '14.1s' },
-          clinical: { status: 'completed', time: '1.7s' }
-        }
-      });
-    }, 5000);
-
-    // Simulate evidence agent completion after 8 seconds
-    setTimeout(() => {
-      updateAnalysis({
-        progress: {
-          ...currentAnalysis.progress,
-          radiology: { status: 'completed', time: '14.1s' },
-          clinical: { status: 'completed', time: '1.7s' },
-          evidence: { status: 'completed', time: '19.2s' }
-        }
-      });
-    }, 8000);
-
-    // Simulate risk agent completion after 10 seconds
-    setTimeout(() => {
-      updateAnalysis({
-        progress: {
-          ...currentAnalysis.progress,
-          radiology: { status: 'completed', time: '14.1s' },
-          clinical: { status: 'completed', time: '1.7s' },
-          evidence: { status: 'completed', time: '19.2s' },
-          risk: { status: 'completed', time: '14.1s' }
-        }
-      });
-    }, 10000);
-
-    // Simulate chairman agent completion after 12 seconds
-    setTimeout(() => {
-      updateAnalysis({
-        progress: {
-          ...currentAnalysis.progress,
-          radiology: { status: 'completed', time: '14.1s' },
-          clinical: { status: 'completed', time: '1.7s' },
-          evidence: { status: 'completed', time: '19.2s' },
-          risk: { status: 'completed', time: '14.1s' },
-          chairman: { status: 'completed', time: '2.3s' }
-        }
-      });
-    }, 12000);
-  };
-
   const startAnalysis = async () => {
+    // Force rebuild - using real backend timing data only
     if (!selectedFile || !patientCode) {
       alert('Please select an X-ray image and enter a patient code');
       return;
@@ -158,8 +97,8 @@ const Analysis = () => {
     // Start new analysis using global state
     startNewAnalysis();
 
-    // Start simulating real-time progress
-    simulateRealTimeProgress();
+    // Start new analysis
+    startNewAnalysis();
 
     try {
       const formData = new FormData();
@@ -169,16 +108,43 @@ const Analysis = () => {
       formData.append('patient_history', patientHistory);
 
       // Start the analysis
-      const response = await fetch('/upload-complete-pipeline-with-chairman', {
+      const response = await fetch('/api/upload-complete-pipeline-with-chairman', {
         method: 'POST',
         body: formData,
       });
 
       if (response.ok) {
         const results = await response.json();
+        
+        // Extract timing data from backend response
+        const stageTimings = results.processing_summary?.stage_timings || {};
+        
+        // Update with real results and mark as complete
         updateAnalysis({
           results: results,
-          isAnalyzing: false
+          isAnalyzing: false,
+          progress: {
+            radiology: { 
+              status: 'completed', 
+              time: stageTimings.radiology ? `${stageTimings.radiology}s` : null
+            },
+            clinical: { 
+              status: 'completed', 
+              time: stageTimings.parallel_analysis ? `${stageTimings.parallel_analysis}s` : null
+            },
+            evidence: { 
+              status: 'completed', 
+              time: stageTimings.parallel_analysis ? `${stageTimings.parallel_analysis}s` : null
+            },
+            risk: { 
+              status: 'completed', 
+              time: stageTimings.parallel_analysis ? `${stageTimings.parallel_analysis}s` : null
+            },
+            chairman: { 
+              status: 'completed', 
+              time: stageTimings.chairman ? `${stageTimings.chairman}s` : null
+            }
+          }
         });
       } else {
         throw new Error('Analysis failed');
@@ -190,8 +156,11 @@ const Analysis = () => {
       // Update progress to show error
       updateAnalysis({
         progress: {
-          ...currentAnalysis.progress,
-          radiology: { ...currentAnalysis.progress.radiology, status: 'error' }
+          radiology: { status: 'error', time: null },
+          clinical: { status: 'pending', time: null },
+          evidence: { status: 'pending', time: null },
+          risk: { status: 'pending', time: null },
+          chairman: { status: 'pending', time: null }
         },
         isAnalyzing: false
       });
@@ -235,7 +204,7 @@ const Analysis = () => {
         </p>
       </div>
 
-      {/* Upload Section - Hide when viewing results unless explicitly requested */}
+      {/* Upload Section - Show when no results or analyzing */}
       {(!analysisResults || isAnalyzing) && (
         <div className="card">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Upload X-ray Image</h2>
@@ -389,13 +358,28 @@ const Analysis = () => {
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-gray-900">Analysis Results</h2>
-            <button
-              onClick={downloadReport}
-              className="btn-secondary flex items-center space-x-2"
-            >
-              <Download className="w-4 h-4" />
-              <span>Download Report</span>
-            </button>
+            <div className="flex space-x-4">
+              <button
+                onClick={() => {
+                  setSelectedFile(null);
+                  setPatientCode('');
+                  setAdditionalInfo('');
+                  setPatientHistory('');
+                  startNewAnalysis();
+                }}
+                className="bg-medical-600 hover:bg-medical-700 text-white font-medium py-2 px-6 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-medical-500 focus:ring-offset-2 flex items-center space-x-2"
+              >
+                <Upload className="w-5 h-5" />
+                <span>New Analysis</span>
+              </button>
+              <button
+                onClick={downloadReport}
+                className="btn-secondary flex items-center space-x-2"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Report</span>
+              </button>
+            </div>
           </div>
           
           <AnalysisResults results={analysisResults} />

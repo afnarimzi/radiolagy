@@ -30,8 +30,11 @@ class ErrorBoundary extends React.Component {
   }
 
   logErrorToService = (error, errorInfo) => {
+    // TODO: Implement error logging service
+    console.error('Error logged:', error, errorInfo);
+    /*
     try {
-      fetch('/log-error', {
+      fetch('/api/log-error', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -48,6 +51,7 @@ class ErrorBoundary extends React.Component {
     } catch (logError) {
       console.error('Failed to log error:', logError);
     }
+    */
   };
 
   handleReload = () => {

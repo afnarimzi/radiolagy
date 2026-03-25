@@ -50,6 +50,67 @@ export const AnalysisProvider = ({ children }) => {
       },
       isAnalyzing: true
     }));
+
+    // Simulate the actual pipeline execution flow with individual timing
+    setTimeout(() => {
+      // Stage 1: Radiology starts
+      setCurrentAnalysis(prev => ({
+        ...prev,
+        progress: {
+          ...prev.progress,
+          radiology: { status: 'processing', time: null }
+        }
+      }));
+    }, 500);
+
+    setTimeout(() => {
+      // Stage 2: Radiology completes with timing, parallel agents start
+      setCurrentAnalysis(prev => ({
+        ...prev,
+        progress: {
+          ...prev.progress,
+          radiology: { status: 'completed', time: 'Processing...' },
+          clinical: { status: 'processing', time: null },
+          evidence: { status: 'processing', time: null },
+          risk: { status: 'processing', time: null }
+        }
+      }));
+    }, 2000);
+
+    // Simulate individual agent completions at different times
+    setTimeout(() => {
+      // Clinical completes first (fastest)
+      setCurrentAnalysis(prev => ({
+        ...prev,
+        progress: {
+          ...prev.progress,
+          clinical: { status: 'completed', time: 'Processing...' }
+        }
+      }));
+    }, 3500);
+
+    setTimeout(() => {
+      // Risk completes next
+      setCurrentAnalysis(prev => ({
+        ...prev,
+        progress: {
+          ...prev.progress,
+          risk: { status: 'completed', time: 'Processing...' }
+        }
+      }));
+    }, 4500);
+
+    setTimeout(() => {
+      // Evidence completes last (slowest), Chairman starts
+      setCurrentAnalysis(prev => ({
+        ...prev,
+        progress: {
+          ...prev.progress,
+          evidence: { status: 'completed', time: 'Processing...' },
+          chairman: { status: 'processing', time: null }
+        }
+      }));
+    }, 5500);
   }, []);
 
   const contextValue = useMemo(() => ({
