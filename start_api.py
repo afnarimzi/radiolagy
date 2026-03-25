@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Verify environment variables are loaded
-required_keys = ['GROQ_API_KEY', 'GOOGLE_API_KEY', 'RISK_AGENT_API_KEY']
+required_keys = ['GROQ_API_KEY', 'GOOGLE_API_KEY']
 missing_keys = [key for key in required_keys if not os.getenv(key)]
 
 if missing_keys:

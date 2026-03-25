@@ -47,7 +47,6 @@ services:
       - REDIS_URL=redis://redis:6379
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
-      - RISK_AGENT_API_KEY=${RISK_AGENT_API_KEY}
     volumes:
       - ./uploads:/app/uploads
       - ./test_images:/app/test_images

@@ -1,14 +1,14 @@
 """
-Risk Assessment Agent using Google Gemini AI
+Risk Assessment Agent using DeepSeek-R1 via Groq
 Analyzes radiology findings to assess patient risk levels and recommend actions
-Enhanced with performance tracking
+Enhanced with performance tracking and advanced reasoning capabilities
 """
 import os
 import json
 import time
 from typing import Dict, Any
 from datetime import datetime
-import google.generativeai as genai
+from groq import Groq
 
 from app.models.risk_models import RiskInput, RiskAssessment, RiskLevel, ActionType
 from app.database.crud import RadiologyDB
@@ -18,30 +18,25 @@ from app.utils.simple_timer import simple_timer
 
 class RiskAssessmentAgent:
     """
-    AI-powered Risk Assessment Agent using Google Gemini
+    AI-powered Risk Assessment Agent using DeepSeek-R1 via Groq
     Analyzes medical findings to determine risk levels and recommend actions
     """
     
     def __init__(self):
-        """Initialize the Risk Assessment Agent with Gemini AI"""
-        self.agent_name = "AI Risk Assessment Agent"
-        self.version = "2.0.0"
-        self.model_name = "gemini-2.5-flash"
+        """Initialize the Risk Assessment Agent with DeepSeek-R1"""
+        self.agent_name = "AI Risk Assessment Agent (DeepSeek-R1)"
+        self.version = "3.0.0"
+        self.model_name = "deepseek-r1-distill-llama-70b"
         
-        # Configure Gemini API with separate key for risk agent
-        api_key = os.getenv("RISK_AGENT_API_KEY")
-        if not api_key or api_key == "your_risk_agent_gemini_key_here":
-            # Fallback to main Gemini key if risk agent key not set
-            api_key = os.getenv("GOOGLE_API_KEY")
-            
+        # Configure Groq API for DeepSeek-R1
+        api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
-            raise ValueError("No Gemini API key found. Set RISK_AGENT_API_KEY or GOOGLE_API_KEY in .env file")
+            raise ValueError("No Groq API key found. Set GROQ_API_KEY in .env file")
             
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(self.model_name)
+        self.client = Groq(api_key=api_key)
         
-        # System prompt for medical risk assessment
-        self.system_prompt = """You are an expert medical AI specializing in risk assessment for radiology findings. 
+        # System prompt for medical risk assessment with reasoning focus
+        self.system_prompt = """You are an expert medical AI specializing in risk assessment for radiology findings. You use advanced reasoning to analyze medical data and provide comprehensive risk evaluations.
 
 Your task is to analyze radiology findings and patient information to determine:
 1. Risk level (LOW, MEDIUM, HIGH, CRITICAL)
@@ -49,6 +44,13 @@ Your task is to analyze radiology findings and patient information to determine:
 3. Urgency timeline
 4. Critical findings that require immediate attention
 5. Detailed reasoning for the assessment
+
+REASONING APPROACH:
+- Think step-by-step through the medical findings
+- Consider differential diagnoses and their implications
+- Evaluate severity and urgency systematically
+- Factor in patient demographics and clinical context
+- Provide clear logical reasoning for your assessment
 
 RISK LEVEL GUIDELINES:
 - LOW (0.0-0.3): Normal findings, routine follow-up
@@ -76,6 +78,7 @@ CONSIDER PATIENT FACTORS:
 - Age (elderly patients have higher risk)
 - Confidence level of radiology findings
 - Multiple abnormalities increase risk
+- Clinical symptoms and presentation
 
 You must respond with valid JSON only, no additional text."""
 
@@ -116,8 +119,8 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
 """
         return prompt
 
-    def _parse_gemini_response(self, response_text: str, case_id: str) -> Dict[str, Any]:
-        """Parse and validate Gemini response"""
+    def _parse_deepseek_response(self, response_text: str, case_id: str) -> Dict[str, Any]:
+        """Parse and validate DeepSeek-R1 response"""
         try:
             # Clean the response text
             response_text = response_text.strip()
@@ -160,7 +163,7 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
             return result
             
         except (json.JSONDecodeError, ValueError, KeyError) as e:
-            print(f"Error parsing Gemini response: {e}")
+            print(f"Error parsing DeepSeek-R1 response: {e}")
             print(f"Raw response: {response_text[:200]}...")
             
             # Return fallback response
@@ -237,10 +240,10 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
         except Exception as e:
             print(f"Error saving risk assessment to database: {str(e)}")
             return False
-    @simple_timer.time_agent("Risk Agent")
+    @simple_timer.time_agent("Risk Agent (DeepSeek-R1)")
     async def assess_risk(self, risk_input: RiskInput, save_to_db: bool = True) -> RiskAssessment:
         """
-        Assess patient risk using Gemini AI
+        Assess patient risk using DeepSeek-R1 via Groq
         
         Args:
             risk_input: RiskInput containing patient and radiology data
@@ -255,14 +258,25 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
             # Create the prompt
             prompt = self._create_risk_prompt(risk_input)
             
-            # Get AI response
-            response = self.model.generate_content(prompt)
+            # Get AI response from DeepSeek-R1 via Groq
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,  # Low temperature for consistent medical analysis
+                max_tokens=2048,
+                top_p=0.9
+            )
             
-            if not response.text:
-                raise ValueError("Empty response from Gemini AI")
+            if not response.choices or not response.choices[0].message.content:
+                raise ValueError("Empty response from DeepSeek-R1")
+            
+            response_text = response.choices[0].message.content
             
             # Parse the response
-            parsed_result = self._parse_gemini_response(response.text, risk_input.case_id)
+            parsed_result = self._parse_deepseek_response(response_text, risk_input.case_id)
             
             # Create RiskAssessment object
             risk_assessment = RiskAssessment(
@@ -275,10 +289,10 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
                 urgency_timeline=parsed_result['urgency_timeline'],
                 next_steps=parsed_result['next_steps'],
                 reasoning=parsed_result['reasoning'],
-                confidence=parsed_result.get('confidence', 0.85),  # Default confidence if not provided
+                confidence=parsed_result.get('confidence', 0.90),  # Higher confidence for DeepSeek-R1
                 follow_up_required=parsed_result.get('follow_up_required', True),
                 specialist_referral=parsed_result.get('specialist_referral'),
-                agent_type="ai_risk_assessment",
+                agent_type="ai_risk_assessment_deepseek",
                 timestamp=datetime.now()
             )
             
@@ -289,14 +303,14 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
             if save_to_db:
                 saved = self._save_to_database(risk_assessment, processing_time)
                 if saved:
-                    print(f"✅ Risk assessment saved to database (Case: {risk_input.case_id})")
+                    print(f"✅ Risk assessment (DeepSeek-R1) saved to database (Case: {risk_input.case_id})")
                 else:
                     print(f"⚠️  Risk assessment completed but not saved to database")
             
             return risk_assessment
             
         except Exception as e:
-            print(f"Error in AI risk assessment: {str(e)}")
+            print(f"Error in DeepSeek-R1 risk assessment: {str(e)}")
             
             # Calculate processing time for fallback
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -311,7 +325,7 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
                 recommended_action=ActionType.SCHEDULE_APPOINTMENT,
                 urgency_timeline="within 1-2 weeks",
                 next_steps=["Contact healthcare provider for manual review"],
-                reasoning=f"AI risk assessment encountered an error. Manual review recommended.",
+                reasoning=f"DeepSeek-R1 risk assessment encountered an error. Manual review recommended.",
                 confidence=0.3,  # Low confidence for fallback assessment
                 follow_up_required=True,
                 specialist_referral=None,
@@ -326,13 +340,16 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
             return fallback_assessment
 
     def test_connection(self) -> bool:
-        """Test connection to Gemini AI"""
+        """Test connection to DeepSeek-R1 via Groq"""
         try:
-            test_prompt = "Say hello"
-            response = self.model.generate_content(test_prompt)
-            return response.text and len(response.text) > 0
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[{"role": "user", "content": "Say hello"}],
+                max_tokens=10
+            )
+            return response.choices and len(response.choices[0].message.content) > 0
         except Exception as e:
-            print(f"Gemini AI connection test failed: {str(e)}")
+            print(f"DeepSeek-R1 connection test failed: {str(e)}")
             return False
 
     def get_model_info(self) -> Dict[str, str]:
@@ -341,6 +358,7 @@ Analyze this case and provide your risk assessment in the exact JSON format abov
             "agent_name": self.agent_name,
             "version": self.version,
             "model": self.model_name,
-            "type": "AI-powered (Google Gemini)",
-            "capabilities": "Medical risk assessment with natural language reasoning"
+            "provider": "Groq (DeepSeek-R1)",
+            "type": "AI-powered reasoning model",
+            "capabilities": "Advanced medical risk assessment with step-by-step reasoning"
         }

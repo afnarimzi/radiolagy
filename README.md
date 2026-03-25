@@ -7,7 +7,7 @@ A  AI-powered medical analysis platform that leverages multiple specialized agen
 - **Radiology Agent**: Advanced X-ray image analysis 
 - **Clinical Agent**: Differential diagnosis generation and clinical reasoning
 - **Evidence Agent**: Medical literature search and evidence-based recommendations
-- **Risk Agent**: Comprehensive risk assessment and urgency evaluation
+- **Risk Agent**: Comprehensive risk assessment using Groq DeepSeek-R1 (advanced reasoning)
 - **Chairman Agent**: Senior medical officer synthesis and final reporting
 
 ##  Architecture
@@ -116,11 +116,10 @@ npm start
 Create a `.env` file with the following configuration:
 
 ```env
-# Google Gemini API Configuration
+# Google Gemini API Configuration (for Radiology Agent)
 GOOGLE_API_KEY=your_radiology_gemini_api_key_here
-RISK_AGENT_API_KEY=your_risk_gemini_api_key_here
 
-# GROQ API Configuration (for Clinical, Evidence, Chairman agents)
+# GROQ API Configuration (for Clinical, Evidence, Risk, Chairman agents)
 GROQ_API_KEY=your_groq_api_key_here
 
 # Database Configuration

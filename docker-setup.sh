@@ -24,7 +24,6 @@ if [ ! -f .env ]; then
     echo "⚠️  Please edit .env file and add your API keys:"
     echo "   - GOOGLE_API_KEY"
     echo "   - GROQ_API_KEY"
-    echo "   - RISK_AGENT_API_KEY"
     echo ""
     read -p "Press Enter after you've updated the .env file..."
 fi
