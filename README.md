@@ -4,11 +4,11 @@ A  AI-powered medical analysis platform that leverages multiple specialized agen
 
 ## Features
 
-- ** Radiology Agent**: Advanced X-ray image analysis 
-- ** Clinical Agent**: Differential diagnosis generation and clinical reasoning
-- ** Evidence Agent**: Medical literature search and evidence-based recommendations
-- ** Risk Agent**: Comprehensive risk assessment and urgency evaluation
-- ** Chairman Agent**: Senior medical officer synthesis and final reporting
+- **Radiology Agent**: Advanced X-ray image analysis 
+- **Clinical Agent**: Differential diagnosis generation and clinical reasoning
+- **Evidence Agent**: Medical literature search and evidence-based recommendations
+- **Risk Agent**: Comprehensive risk assessment and urgency evaluation
+- **Chairman Agent**: Senior medical officer synthesis and final reporting
 
 ##  Architecture
 
