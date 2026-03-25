@@ -1,16 +1,16 @@
-# 🏥 Multi-Agent Medical AI System
+# Multi-Agent Medical AI System
 
 A  AI-powered medical analysis platform that leverages multiple specialized agents to provide comprehensive X-ray analysis, clinical diagnosis, evidence-based research, risk assessment, and final medical reporting.
 
-## 🌟 Features
+## Features
 
-- **🔬 Radiology Agent**: Advanced X-ray image analysis 
-- **🩺 Clinical Agent**: Differential diagnosis generation and clinical reasoning
-- **📚 Evidence Agent**: Medical literature search and evidence-based recommendations
-- **⚠️ Risk Agent**: Comprehensive risk assessment and urgency evaluation
-- **👔 Chairman Agent**: Senior medical officer synthesis and final reporting
+- ** Radiology Agent**: Advanced X-ray image analysis 
+- ** Clinical Agent**: Differential diagnosis generation and clinical reasoning
+- ** Evidence Agent**: Medical literature search and evidence-based recommendations
+- ** Risk Agent**: Comprehensive risk assessment and urgency evaluation
+- ** Chairman Agent**: Senior medical officer synthesis and final reporting
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
@@ -45,7 +45,7 @@ A  AI-powered medical analysis platform that leverages multiple specialized agen
                        └─────────────────┘
 ```
 
-## 🚀 Quick Start (Docker - Recommended)
+## Quick Start (Docker - Recommended)
 
 ### Prerequisites
 - Docker and Docker Compose
@@ -73,7 +73,7 @@ docker-compose up -d
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 
-## 🛠️ Manual Installation
+##  Manual Installation
 
 ### Prerequisites
 - Python 3.9+
@@ -109,7 +109,7 @@ npm install
 npm start
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -143,7 +143,7 @@ DEBUG=False
 
 
 
-## 🏗️ Project Structure
+##  Project Structure
 
 ```
 llmCouncil/
@@ -174,21 +174,8 @@ llmCouncil/
 └── start_api.py                # API server entry point
 ```
 
-## 🔧 API Endpoints
 
-### Core Endpoints
-- `POST /analyze-complete-pipeline` - Full 5-agent analysis pipeline
-- `GET /cases` - Retrieve analysis history
-- `GET /cases/{case_id}` - Get specific case details
-- `GET /stats` - System statistics
-- `GET /health` - Health check
-
-### Individual Agent Endpoints
-- `POST /analyze` - Radiology analysis only
-- `POST /assess-risk` - Risk assessment only
-- `POST /clinical-analysis` - Clinical diagnosis only
-
-## 🐳 Docker Services
+##  Docker Services
 
 | Service | Container | Port | Description |
 |---------|-----------|------|-------------|
@@ -198,7 +185,7 @@ llmCouncil/
 | Redis | `radiology_redis` | 6379 | Caching layer |
 
 
-## 🧪 Testing
+##  Testing
 
 ```bash
 # Backend tests
