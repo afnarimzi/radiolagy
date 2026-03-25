@@ -8,6 +8,9 @@ sqlalchemy
 psycopg2-binary
 asyncpg
 pillow
+transformers>=4.30.0
+torch>=2.0.0
+sentence-transformers>=2.2.0
 python-multipart
 groq
 requests

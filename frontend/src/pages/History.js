@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import jsPDF from 'jspdf';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileText, 
@@ -85,25 +86,372 @@ const History = () => {
     }
   };
 
-  const downloadReport = async (caseId) => {
+  const downloadPDFReport = async (caseId) => {
     try {
       const response = await fetch(`/reports/${caseId}`);
       if (response.ok) {
-        const data = await response.json();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `medical_report_${caseId}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const results = await response.json();
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 20;
+        const contentWidth = pageWidth - 2 * margin;
+        let yPos = 20;
+
+        // Helper function to add text with word wrap
+        const addText = (text, x, y, options = {}) => {
+          const { fontSize = 10, fontStyle = 'normal', 
+                  color = [0, 0, 0], align = 'left' } = options;
+          doc.setFontSize(fontSize);
+          doc.setFont('helvetica', fontStyle);
+          doc.setTextColor(...color);
+          const lines = doc.splitTextToSize(text || 'N/A', contentWidth - (x - margin));
+          
+          let currentY = y;
+          lines.forEach(line => {
+            currentY = checkNewPage(currentY, fontSize * 0.45);
+            doc.text(line, x, currentY, { align });
+            currentY += fontSize * 0.45;
+          });
+          
+          return currentY;
+        };
+
+        const addSection = (title, y) => {
+          y = checkNewPage(y, 50); // Ensure page break before section header
+          doc.setFillColor(41, 128, 185);
+          doc.rect(margin, y - 5, contentWidth, 10, 'F');
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(13);
+          doc.setFont('helvetica', 'bold');
+          doc.text(title, margin + 4, y + 2);
+          doc.setTextColor(0, 0, 0);
+          return y + 12;
+        };
+
+        const addDivider = (y) => {
+          doc.setDrawColor(200, 200, 200);
+          doc.setLineWidth(0.3);
+          doc.line(margin, y, pageWidth - margin, y);
+          return y + 8;
+        };
+
+        const checkNewPage = (y, space = 50) => {
+          if (y > 240 || (y + space > 280)) {
+            doc.addPage();
+            // Add header to new page
+            doc.setFillColor(26, 54, 93);
+            doc.rect(0, 0, pageWidth, 15, 'F');
+            doc.setFillColor(52, 152, 219);
+            doc.rect(0, 15, pageWidth, 2, 'F');
+            return 30;
+          }
+          return y;
+        };
+
+        const drawConfidenceBar = (confidence, y) => {
+          const barWidth = 60;
+          doc.setFillColor(220, 220, 220);
+          doc.roundedRect(margin + 100, y - 4, barWidth, 5, 2, 2, 'F');
+          doc.setFillColor(52, 152, 219);
+          doc.roundedRect(margin + 100, y - 4, barWidth * (confidence / 100), 5, 2, 2, 'F');
+          doc.setFontSize(9);
+          doc.setTextColor(100, 100, 100);
+          doc.text(`${Math.round(confidence)}%`, margin + 100 + barWidth + 5, y);
+          return y;
+        };
+
+        // ─── HEADER ───
+        doc.setFillColor(26, 54, 93);
+        doc.rect(0, 0, pageWidth, 40, 'F');
+        doc.setFillColor(52, 152, 219);
+        doc.rect(0, 40, pageWidth, 3, 'F');
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Medical AI Analysis Report', margin, 22);
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 32);
+        yPos = 55;
+
+        // ─── PATIENT INFO ───
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text('PATIENT INFORMATION', margin, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Patient Code:`, margin, yPos);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${results.patient_code || 'Unknown'}`, margin + 30, yPos);
+        
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Case ID:`, margin + 100, yPos);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${results.case_id || 'N/A'}`, margin + 120, yPos);
+        yPos += 8;
+        
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Pipeline:`, margin, yPos);
+        doc.text(`${results.orchestration || 'LangGraph StateGraph'}`, margin + 30, yPos);
+        yPos += 15;
+
+        // ─── CHAIRMAN SUMMARY ───
+        yPos = addSection('EXECUTIVE SUMMARY', yPos);
+        const chairman = results.chairman_report || {};
+        
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Primary Diagnosis:', margin, yPos);
+        yPos = addText(chairman.primary_diagnosis || 'N/A', margin + 40, yPos, { fontSize: 11, fontStyle: 'bold', color: [41, 128, 185] });
+        yPos += 8;
+        
+        yPos = addText('Executive Summary:', margin, yPos, { fontSize: 11, fontStyle: 'bold' });
+        yPos += 2;
+        yPos = addText(chairman.executive_summary || 'No summary available', margin, yPos, { fontSize: 10 });
+        yPos += 8;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Confidence Score:', margin, yPos);
+        drawConfidenceBar((chairman.confidence_level || 0) * 100, yPos);
+        yPos += 10;
+        
+        doc.text(`Urgency: ${(chairman.urgency_level || 'N/A').toUpperCase()}`, margin, yPos);
+        doc.text(`Consensus: ${((chairman.consensus_score || 0) * 100).toFixed(0)}%`, margin + 100, yPos);
+        yPos += 15;
+
+        // ─── RADIOLOGY ───
+        yPos = checkNewPage(yPos, 80);
+        yPos = addDivider(yPos);
+        yPos = addSection('RADIOLOGY ANALYSIS', yPos);
+        const radiology = results.radiology_analysis || {};
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Findings:', margin, yPos);
+        yPos += 6;
+        yPos = addText(radiology.findings || 'No findings', margin, yPos, { fontSize: 10 });
+        yPos += 8;
+        
+        if (radiology.abnormalities?.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.text('Abnormalities Detected:', margin, yPos);
+          yPos += 6;
+          radiology.abnormalities.forEach(ab => {
+            yPos = checkNewPage(yPos);
+            doc.circle(margin + 3, yPos - 1.5, 1, 'F');
+            yPos = addText(ab, margin + 7, yPos, { fontSize: 10 });
+            yPos += 2;
+          });
+          yPos += 5;
+        }
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Image Quality:`, margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${radiology.image_quality || 'N/A'}`, margin + 30, yPos);
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Confidence:`, margin + 100, yPos);
+        drawConfidenceBar((radiology.confidence || 0) * 100, yPos);
+        yPos += 20;
+
+        // ─── CLINICAL ───
+        yPos = checkNewPage(yPos, 80);
+        yPos = addDivider(yPos);
+        yPos = addSection('CLINICAL ANALYSIS', yPos);
+        const clinical = results.clinical_analysis || {};
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('Differential Diagnosis:', margin, yPos);
+        yPos += 6;
+        const diagnoses = Array.isArray(clinical.differential_diagnosis)
+          ? clinical.differential_diagnosis
+          : [clinical.differential_diagnosis];
+        diagnoses.forEach(d => {
+          yPos = checkNewPage(yPos);
+          doc.circle(margin + 3, yPos - 1.5, 1, 'F');
+          yPos = addText(d, margin + 7, yPos, { fontSize: 10 });
+          yPos += 2;
+        });
+        yPos += 8;
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('Clinical Reasoning:', margin, yPos);
+        yPos += 6;
+        yPos = addText(clinical.reasoning || 'No reasoning available', margin, yPos, { fontSize: 9 });
+        yPos += 8;
+
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Urgency:`, margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${clinical.urgency || 'N/A'}`, margin + 20, yPos);
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Confidence:`, margin + 100, yPos);
+        drawConfidenceBar((clinical.confidence || 0) * 100, yPos);
+        yPos += 20;
+
+        // ─── RISK ───
+        yPos = checkNewPage(yPos, 80);
+        yPos = addDivider(yPos);
+        yPos = addSection('RISK ASSESSMENT', yPos);
+        const risk = results.risk_assessment || {};
+        
+        const riskColors = {
+          low: [39, 174, 96],
+          medium: [243, 156, 18],
+          high: [231, 76, 60],
+          critical: [142, 68, 173]
+        };
+        const riskColor = riskColors[risk.risk_level?.toLowerCase()] || [128, 128, 128];
+        
+        const riskText = `${(risk.risk_level || 'UNKNOWN').toUpperCase()} RISK`;
+        doc.setFontSize(14);
+        const riskTextWidth = doc.getTextWidth(riskText);
+        const badgeWidth = riskTextWidth + 16;
+        
+        doc.setFillColor(...riskColor);
+        doc.roundedRect(margin, yPos - 3, badgeWidth, 10, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.text(riskText, margin + 8, yPos + 4);
+        
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Risk Score: ${((risk.risk_score || 0) * 100).toFixed(0)}%`, margin + badgeWidth + 10, yPos + 4);
+        yPos += 16;
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Recommended Action:', margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(risk.recommended_action || 'N/A', margin + 45, yPos);
+        yPos += 8;
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('Urgency Timeline:', margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(risk.urgency_timeline || 'N/A', margin + 45, yPos);
+        yPos += 12;
+
+        if (risk.critical_findings?.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(231, 76, 60);
+          doc.text('Critical Findings:', margin, yPos);
+          doc.setTextColor(0, 0, 0);
+          yPos += 6;
+          risk.critical_findings.forEach(finding => {
+            yPos = checkNewPage(yPos);
+            doc.setFillColor(231, 76, 60);
+            doc.circle(margin + 3, yPos - 1, 1.5, 'F');
+            doc.setTextColor(231, 76, 60);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            const lines = doc.splitTextToSize(`   ${finding}`, contentWidth - 10);
+            doc.text(lines, margin + 7, yPos);
+            yPos += lines.length * 4 + 3;
+            doc.setTextColor(0, 0, 0);
+          });
+          yPos += 5;
+        }
+
+        if (risk.risk_factors?.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(0, 0, 0);
+          doc.text('Risk Factors:', margin, yPos);
+          yPos += 6;
+          risk.risk_factors.forEach(factor => {
+            yPos = checkNewPage(yPos);
+            doc.setFillColor(80, 80, 80);
+            doc.circle(margin + 3, yPos - 1, 1.5, 'F');
+            doc.setTextColor(60, 60, 60);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            const lines = doc.splitTextToSize(`   ${factor}`, contentWidth - 10);
+            doc.text(lines, margin + 7, yPos);
+            yPos += lines.length * 4 + 3;
+            doc.setTextColor(0, 0, 0);
+          });
+          yPos += 10;
+        }
+
+        // ─── EVIDENCE ───
+        yPos = checkNewPage(yPos, 80);
+        yPos = addDivider(yPos);
+        yPos = addSection('EVIDENCE RESEARCH', yPos);
+        const evidence = results.evidence_research || {};
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Keywords:`, margin, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${evidence.search_keywords || 'N/A'}`, margin + 25, yPos);
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Papers Found:`, margin + 100, yPos);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${evidence.total_papers_found || 0}`, margin + 130, yPos);
+        yPos += 10;
+        
+        yPos = addText('Evidence Summary:', margin, yPos, { fontSize: 10, fontStyle: 'bold' });
+        yPos += 2;
+        yPos = addText(evidence.evidence_summary || 'No summary available', margin, yPos, { fontSize: 9 });
+        yPos += 10;
+
+        if (evidence.citations?.length > 0) {
+          doc.setFont('helvetica', 'bold');
+          doc.text('Key Citations:', margin, yPos);
+          yPos += 6;
+          evidence.citations.slice(0, 3).forEach((c, i) => {
+            yPos = checkNewPage(yPos);
+            yPos = addText(`${i + 1}. ${c.title} — ${c.journal} (${c.year})`, margin + 5, yPos, { fontSize: 8 });
+            yPos += 2;
+          });
+        }
+        yPos += 15;
+
+        // ─── IMMEDIATE ACTIONS ───
+        yPos = checkNewPage(yPos, 80);
+        yPos = addDivider(yPos);
+        yPos = addSection('IMMEDIATE ACTIONS', yPos);
+        (chairman.immediate_actions || []).forEach(action => {
+          yPos = checkNewPage(yPos);
+          doc.setFillColor(41, 128, 185);
+          doc.rect(margin + 2, yPos - 3, 2, 2, 'F');
+          yPos = addText(action, margin + 8, yPos, { fontSize: 10 });
+          yPos += 4;
+        });
+
+        // ─── FOOTER ───
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setDrawColor(200, 200, 200);
+          doc.line(margin, 285, pageWidth - margin, 285);
+          doc.setFontSize(7);
+          doc.setTextColor(128, 128, 128);
+          doc.text('CONFIDENTIAL - AI-Generated Medical Report - For Clinical Review Only', margin, 290);
+          doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin, 290, { align: 'right' });
+        }
+
+        // ─── SAVE ───
+        const filename = `medical_report_${results.patient_code || 'patient'}_${results.case_id?.substring(0, 8) || 'report'}.pdf`;
+        doc.save(filename);
       }
     } catch (error) {
       console.error('Failed to download report:', error);
     }
   };
+
 
   if (loading) {
     return (
@@ -213,7 +561,7 @@ const History = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      downloadReport(analysis.case_id);
+                      downloadPDFReport(analysis.case_id);
                     }}
                     className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                     title="Download Report"
