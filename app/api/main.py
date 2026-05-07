@@ -54,6 +54,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Strip /api prefix so frontend calls like /api/stats hit /stats on the backend
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class StripApiPrefixMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if request.url.path.startswith("/api/"):
+            request.scope["path"] = request.url.path[4:]  # strip /api
+        return await call_next(request)
+
+app.add_middleware(StripApiPrefixMiddleware)
+
 # Initialize agents
 radiology_agent = RadiologyAgent()
 clinical_agent_instance = ClinicalAgent()
@@ -313,7 +325,7 @@ async def analyze_and_assess_risk(request: AnalysisRequest, db: Session = Depend
                 "next_steps": risk_assessment.next_steps,
                 "confidence": risk_assessment.confidence
             },
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow().isoformat()
         }
         
     except Exception as e:
@@ -391,7 +403,7 @@ async def analyze_complete_pipeline(request: AnalysisRequest, db: Session = Depe
                 "stage_timings": pipeline_result.get("stage_timings", {}),
                 "errors": pipeline_result.get("errors", [])
             },
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow().isoformat()
         }
 
     except Exception as e:
@@ -491,7 +503,7 @@ async def upload_complete_pipeline(
                 "stage_timings": pipeline_result.get("stage_timings", {}),
                 "errors": pipeline_result.get("errors", [])
             },
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow().isoformat()
         }
 
     except Exception as e:
@@ -504,6 +516,7 @@ async def upload_complete_pipeline_with_chairman(
     additional_info: Optional[str] = Form(None),
     patient_history: Optional[str] = Form(None),
     thread_id: Optional[str] = Form(None),
+    use_dual_model: Optional[str] = Form("false"),
     db: Session = Depends(get_db)
 ):
     """Upload image and run complete 5-agent medical pipeline using integrated LangGraph orchestration"""
@@ -530,7 +543,8 @@ async def upload_complete_pipeline_with_chairman(
             patient_code=patient_code,
             additional_info=additional_info,
             patient_history=patient_history,
-            thread_id=thread_id
+            thread_id=thread_id,
+            use_dual_model=(use_dual_model or "").lower() in ("true", "1", "yes"),
         )
 
         # Step 3: Return comprehensive results
@@ -580,6 +594,7 @@ async def upload_complete_pipeline_with_chairman(
                 "next_steps": pipeline_result.get("next_steps", [])
             },
             "chairman_report": pipeline_result.get("chairman_report", {}),
+            "dual_radiology_findings": pipeline_result.get("dual_radiology_findings"),
 
             "overall_confidence": pipeline_result.get("chairman_confidence", 0.85),
             "processing_summary": {
@@ -595,7 +610,7 @@ async def upload_complete_pipeline_with_chairman(
                 "stage_timings": pipeline_result.get("stage_timings", {}),
                 "errors": pipeline_result.get("errors", [])
             },
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow().isoformat()
         }
 
     except Exception as e:
@@ -877,6 +892,164 @@ async def run_evidence_agent(request: EvidenceRequest, db: Session = Depends(get
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Evidence search failed: {str(e)}")
+
+@app.post("/upload-dual-pipeline")
+async def upload_dual_pipeline(
+    file: UploadFile = File(...),
+    patient_code: str = Form("UNKNOWN"),
+    additional_info: Optional[str] = Form(None),
+    patient_history: Optional[str] = Form(None),
+    thread_id: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload an X-ray image and run the complete 5-agent pipeline with
+    dual-model radiology validation (Gemini + Groq consensus).
+
+    The radiology stage uses DualRadiologyAgent which runs both models in
+    parallel, validates consensus, and only proceeds to downstream agents
+    when the validation decision is PASS.
+
+    Backward-compatible response format — adds ``dual_radiology_validation``
+    field with full dual-model details.
+    """
+    try:
+        from app.utils.simple_timer import simple_timer
+        from app.orchestration.pipeline import medical_pipeline
+        simple_timer.reset_session()
+
+        # Save uploaded file
+        upload_dir = "uploads"
+        os.makedirs(upload_dir, exist_ok=True)
+        case_id = str(uuid.uuid4())
+        file_path = os.path.join(upload_dir, f"{case_id}_{file.filename}")
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+
+        # Run pipeline with dual-model enabled
+        pipeline_result = await medical_pipeline.run_pipeline(
+            image_path=file_path,
+            patient_code=patient_code,
+            additional_info=additional_info,
+            patient_history=patient_history,
+            thread_id=thread_id,
+            use_dual_model=True,
+        )
+
+        return {
+            "message": "Dual-model 5-agent medical pipeline completed successfully",
+            "upload_info": {
+                "original_filename": file.filename,
+                "saved_path": file_path,
+                "file_size": len(content),
+                "content_type": file.content_type,
+            },
+            "case_id": pipeline_result.get("case_id"),
+            "patient_code": patient_code,
+            "thread_id": pipeline_result.get("thread_id"),
+            "pipeline_status": "completed",
+            "orchestration": "Dual-Model LangGraph StateGraph",
+            "radiology_analysis": {
+                "findings": pipeline_result.get("radiology_findings", ""),
+                "abnormalities": pipeline_result.get("abnormalities", []),
+                "anatomical_structures": pipeline_result.get("anatomical_structures", []),
+                "confidence": pipeline_result.get("confidence", 0.0),
+                "image_quality": pipeline_result.get("image_quality", "unknown"),
+                "recommendations": pipeline_result.get("radiology_recommendations", []),
+            },
+            "dual_radiology_validation": pipeline_result.get("dual_radiology_findings"),
+            "clinical_analysis": {
+                "differential_diagnosis": pipeline_result.get("differential_diagnosis", []),
+                "reasoning": pipeline_result.get("clinical_reasoning", ""),
+                "urgency": pipeline_result.get("clinical_urgency", "unknown"),
+                "recommended_followup": pipeline_result.get("clinical_followup", ""),
+                "confidence": pipeline_result.get("clinical_confidence", 0.0),
+            },
+            "evidence_research": {
+                "search_keywords": pipeline_result.get("search_keywords", ""),
+                "evidence_summary": pipeline_result.get("evidence_summary", ""),
+                "total_papers_found": pipeline_result.get("total_papers", 0),
+                "citations": pipeline_result.get("citations", []),
+            },
+            "risk_assessment": {
+                "risk_level": pipeline_result.get("risk_level", "unknown"),
+                "risk_score": pipeline_result.get("risk_score", 0.0),
+                "recommended_action": pipeline_result.get("risk_action", "unknown"),
+                "urgency_timeline": pipeline_result.get("risk_timeline", ""),
+                "risk_factors": pipeline_result.get("risk_factors", []),
+                "critical_findings": pipeline_result.get("critical_findings", []),
+                "next_steps": pipeline_result.get("next_steps", []),
+            },
+            "chairman_report": pipeline_result.get("chairman_report", {}),
+            "overall_confidence": pipeline_result.get("chairman_confidence", 0.85),
+            "processing_summary": {
+                "total_agents": 5,
+                "successful_agents": sum([
+                    pipeline_result.get("radiology_complete", False),
+                    pipeline_result.get("clinical_complete", False),
+                    pipeline_result.get("evidence_complete", False),
+                    pipeline_result.get("risk_complete", False),
+                    pipeline_result.get("chairman_complete", False),
+                ]),
+                "workflow": "Dual-Model LangGraph Medical Pipeline",
+                "stage_timings": pipeline_result.get("stage_timings", {}),
+                "errors": pipeline_result.get("errors", []),
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Dual-model pipeline failed: {str(e)}")
+
+
+@app.get("/dual-metrics/dashboard")
+async def get_dual_metrics_dashboard():
+    """
+    Return real-time performance dashboard statistics for the dual-model
+    radiology validation system (Req 5.4).
+    """
+    from app.utils.metrics_collector import metrics_collector
+    return metrics_collector.get_dashboard_stats()
+
+
+@app.get("/dual-metrics/consensus-trend")
+async def get_consensus_trend(last_n: int = 50):
+    """Return the last N consensus metric records for trend analysis."""
+    from app.utils.metrics_collector import metrics_collector
+    return {"trend": metrics_collector.get_consensus_trend(last_n=last_n)}
+
+
+@app.get("/dual-metrics/alerts")
+async def get_alerts(last_n: int = 20):
+    """Return recent alerts from the dual-model alerting system (Req 14.2)."""
+    from app.utils.alert_manager import alert_manager
+    return {
+        "summary": alert_manager.get_alert_summary(),
+        "recent_alerts": alert_manager.get_recent_alerts(last_n=last_n),
+    }
+
+
+@app.get("/dual-config")
+async def get_dual_config():
+    """Return the current dual-model configuration (Req 6.5, 12.1)."""
+    from app.utils.config_manager import dual_config
+    return {
+        "confidence_threshold": dual_config.confidence_threshold,
+        "agreement_threshold": dual_config.agreement_threshold,
+        "quality_threshold": dual_config.quality_threshold,
+        "max_retries": dual_config.max_retries,
+        "require_consensus": dual_config.require_consensus,
+        "enable_statistical_analysis": dual_config.enable_statistical_analysis,
+        "use_dual_model": dual_config.use_dual_model,
+        "gemini_model": dual_config.gemini_model,
+        "groq_model": dual_config.groq_model,
+        "single_model_fallback_enabled": dual_config.single_model_fallback_enabled,
+        "processing_timeout_seconds": dual_config.processing_timeout_seconds,
+        "instance_id": dual_config.instance_id,
+        "distributed_mode": dual_config.distributed_mode,
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -7,7 +7,11 @@ import os
 from dotenv import load_dotenv
 
 from app.database.database import Base, get_db
-from app.database.models import Patient, PatientInput, PatientOutput, AgentThread, MedicalReport
+from app.database.models import (
+    Patient, PatientInput, PatientOutput, AgentThread, MedicalReport,
+    # Dual-model tables — must be imported so Base.metadata.create_all() picks them up
+    DualRadiologyAnalysis, ValidationMetrics, ModelPerformanceLog,
+)
 
 # Load environment variables
 load_dotenv()
@@ -149,6 +153,9 @@ if __name__ == "__main__":
         print("- patient_outputs (Radiology analysis results)")
         print("- agent_threads (Agent report tracking)")
         print("- medical_reports (Final medical reports)")
+        print("- dual_radiology_analyses (Dual-model analysis results)")
+        print("- validation_metrics (Consensus and validation metrics)")
+        print("- model_performance_logs (Per-model performance tracking)")
     else:
         print("\n❌ Database setup failed!")
         exit(1)

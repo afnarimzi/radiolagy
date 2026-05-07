@@ -20,7 +20,7 @@ class ChairmanAgent:
     
     def __init__(self):
         self.client = Groq(api_key=os.getenv('GROQ_API_KEY'))
-        self.model = "llama-3.1-8b-instant"  # Stable GROQ model
+        self.model = "llama-3.3-70b-versatile"  # Higher TPM limits
         
     @simple_timer.time_agent("Chairman Agent")
     async def analyze(self, input_data: ChairmanInput, save_to_db: bool = True) -> ChairmanOutput:
@@ -44,7 +44,7 @@ class ChairmanAgent:
                         "content": prompt
                     }
                 ],
-                max_tokens=6000,  # Increased from 4000 to ensure complete responses
+                max_tokens=2000,  # Keep prompt small to avoid TPM limits
                 temperature=0.1  # Low temperature for consistent medical reasoning
             )
             
@@ -84,61 +84,37 @@ class ChairmanAgent:
     
     def _create_synthesis_prompt(self, input_data: ChairmanInput) -> str:
         """Create comprehensive prompt for medical synthesis"""
-        
-        return f"""You are a Senior Medical Officer (Chairman) reviewing a comprehensive medical case. Your role is to synthesize findings from 4 specialist medical AI agents and provide a definitive final medical report.
+        def _trim(obj, max_chars=400):
+            s = json.dumps(obj) if not isinstance(obj, str) else obj
+            return s[:max_chars] + "..." if len(s) > max_chars else s
 
-CASE INFORMATION:
-- Case ID: {input_data.case_id}
-- Patient Code: {input_data.patient_code}
-- Patient History: {input_data.patient_history or "Not provided"}
-- Additional Notes: {input_data.additional_notes or "None"}
+        return f"""You are a Senior Medical Officer synthesizing specialist reports. Respond ONLY with valid JSON.
 
-SPECIALIST REPORTS TO SYNTHESIZE:
+CASE: {input_data.patient_code} | History: {(input_data.patient_history or 'None')[:100]}
 
-1. RADIOLOGY ANALYSIS:
-{json.dumps(input_data.radiology_findings, indent=2)}
+RADIOLOGY: {_trim(input_data.radiology_findings)}
+CLINICAL: {_trim(input_data.clinical_findings)}
+EVIDENCE: {_trim(input_data.evidence_findings)}
+RISK: {_trim(input_data.risk_findings)}
 
-2. CLINICAL ANALYSIS:
-{json.dumps(input_data.clinical_findings, indent=2)}
-
-3. EVIDENCE RESEARCH:
-{json.dumps(input_data.evidence_findings, indent=2)}
-
-4. RISK ASSESSMENT:
-{json.dumps(input_data.risk_findings, indent=2)}
-
-As the Chairman, provide a comprehensive final medical report in the following JSON format:
-
+Return this JSON (no extra text):
 {{
-    "executive_summary": "2-3 sentence high-level summary of the case and key findings",
-    "primary_diagnosis": "Most likely primary diagnosis based on all evidence",
-    "differential_diagnoses": ["Alternative diagnosis 1", "Alternative diagnosis 2", "Alternative diagnosis 3"],
-    "radiology_synthesis": "Key radiology findings and their clinical significance",
-    "clinical_synthesis": "Clinical interpretation and reasoning synthesis",
-    "evidence_synthesis": "Evidence-based medicine findings and their relevance",
-    "risk_synthesis": "Risk assessment summary and implications",
-    "immediate_actions": ["Action 1", "Action 2", "Action 3"],
-    "follow_up_plan": ["Follow-up 1", "Follow-up 2", "Follow-up 3"],
-    "specialist_referrals": ["Referral 1 if needed", "Referral 2 if needed"],
+    "executive_summary": "2-3 sentence summary",
+    "primary_diagnosis": "most likely diagnosis",
+    "differential_diagnoses": ["alt 1", "alt 2"],
+    "radiology_synthesis": "key radiology findings",
+    "clinical_synthesis": "clinical interpretation",
+    "evidence_synthesis": "evidence relevance",
+    "risk_synthesis": "risk summary",
+    "immediate_actions": ["action 1", "action 2"],
+    "follow_up_plan": ["follow-up 1"],
+    "specialist_referrals": ["referral if needed"],
     "confidence_level": 0.85,
     "consensus_score": 0.90,
     "urgency_level": "urgent",
-    "chairman_reasoning": "Detailed explanation of your clinical reasoning process and how you synthesized the specialist reports",
-    "quality_flags": ["Any quality concerns or flags"]
-}}
-
-INSTRUCTIONS:
-1. Act as a senior physician with 20+ years of experience
-2. Synthesize ALL specialist findings into a coherent assessment
-3. Identify any conflicts between specialist reports and resolve them
-4. Provide clear, actionable recommendations
-5. Assign appropriate urgency level: "critical", "urgent", or "routine"
-6. Calculate confidence based on agreement between specialists and quality of evidence
-7. Flag any quality concerns or inconsistencies
-8. Ensure medical accuracy and professional language
-9. Consider patient safety as the top priority
-
-Provide ONLY the JSON response, no additional text."""
+    "chairman_reasoning": "brief clinical reasoning",
+    "quality_flags": []
+}}"""
 
     def _parse_chairman_response(self, response_text: str, input_data: ChairmanInput) -> ChairmanOutput:
         """Parse Claude's response into structured ChairmanOutput"""

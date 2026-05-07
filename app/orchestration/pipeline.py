@@ -9,12 +9,13 @@ from typing import Any, Dict, List, Optional, TypedDict, Annotated
 import operator
 
 from langgraph.graph import StateGraph, END
+from app.agents.dual_radiology_agent import DualRadiologyAgent
 from app.agents.radiology_agent import RadiologyAgent
 from app.agents.clinical_agent import ClinicalAgent
 from app.agents.evidence_agent import EvidenceAgent
 from app.agents.risk_agent import RiskAssessmentAgent
 from app.agents.chairman_agent import ChairmanAgent
-from app.models.radiology_models import XrayInput
+from app.models.radiology_models import XrayInput, DualRadiologyInput, ValidationConfig
 from app.models.clinical_models import ClinicalInput
 from app.models.evidence_models import EvidenceInput
 from app.models.risk_models import RiskInput
@@ -30,6 +31,7 @@ class MedicalPipelineState(TypedDict):
     additional_info: Optional[str]
     patient_history: Optional[str]
     thread_id: Optional[str]
+    use_dual_model: Optional[bool]  # When True, use DualRadiologyAgent
     
     # Radiology Results
     radiology_findings: Optional[str]
@@ -39,6 +41,7 @@ class MedicalPipelineState(TypedDict):
     image_quality: Optional[str]
     radiology_recommendations: Optional[List[str]]
     radiology_complete: Optional[bool]
+    dual_radiology_findings: Optional[dict]  # Full dual-model findings when available
     
     # Clinical Results
     differential_diagnosis: Optional[List[str]]
@@ -85,6 +88,7 @@ class MedicalPipeline:
     
     def __init__(self):
         self.radiology_agent = RadiologyAgent()
+        self.dual_radiology_agent = DualRadiologyAgent()
         self.clinical_agent = ClinicalAgent()
         self.evidence_agent = EvidenceAgent()
         self.risk_agent = RiskAssessmentAgent()
@@ -113,46 +117,113 @@ class MedicalPipeline:
         return graph.compile()
     
     async def _radiology_node(self, state: MedicalPipelineState) -> Dict:
-        """Execute radiology analysis"""
-        print("🔬 Stage 1: Radiology Analysis...")
+        """Execute radiology analysis (single-model or dual-model based on state)"""
+        use_dual = state.get("use_dual_model", False)
+        mode = "Dual-Model" if use_dual else "Single-Model"
+        print(f"🔬 Stage 1: Radiology Analysis ({mode})...")
         start_time = time.time()
         
         try:
-            # Create input
-            xray_input = XrayInput(
-                image_path=state["image_path"],
-                patient_code=state["patient_code"],
-                case_id=state.get("case_id") or str(uuid.uuid4()),
-                additional_info=state.get("additional_info", ""),
-                thread_id=state.get("thread_id") 
-            )
-            
-            # Run radiology analysis
-            result = await self.radiology_agent.analyze(xray_input, save_to_db=True)
-            elapsed = time.time() - start_time
-            
-            print(f"   ✅ Radiology completed in {elapsed:.2f}s")
-            
-            return {
-                "case_id": xray_input.case_id,
-                "radiology_findings": result.findings,
-                "abnormalities": result.abnormalities,
-                "anatomical_structures": result.anatomical_structures,
-                "confidence": result.confidence,
-                "image_quality": result.image_quality,
-                "radiology_recommendations": result.recommendations,
-                "radiology_complete": True,
-                "stage_timings": {"radiology": round(float(elapsed), 2)},
-                "errors": []
-            }
-            
+            if use_dual:
+                # --- Dual-model path ---
+                dual_input = DualRadiologyInput(
+                    image_path=state["image_path"],
+                    patient_code=state["patient_code"],
+                    case_id=state.get("case_id") or str(uuid.uuid4()),
+                    additional_info=state.get("additional_info", ""),
+                    thread_id=state.get("thread_id"),
+                    validation_config=ValidationConfig(),
+                )
+                findings = await self.dual_radiology_agent.analyze(dual_input)
+                elapsed = time.time() - start_time
+
+                # Persist to DB
+                try:
+                    from app.database.database import SessionLocal
+                    from app.database.crud import DualRadiologyDB, RadiologyDB
+                    db = SessionLocal()
+                    try:
+                        # Ensure case input exists
+                        rad_db = RadiologyDB(db)
+                        if not rad_db.get_case_input(dual_input.case_id):
+                            rad_db.create_case_input(
+                                case_id=dual_input.case_id,
+                                patient_code=dual_input.patient_code or "UNKNOWN",
+                                input_data={"image_path": dual_input.image_path},
+                                image_path=dual_input.image_path,
+                                additional_info=dual_input.additional_info,
+                            )
+                        dual_db = DualRadiologyDB(db)
+                        dual_db.save_findings_to_db(findings, processing_time_total=elapsed)
+                        # Also save as standard radiology output for downstream compatibility
+                        rad_db.save_agent_output(
+                            case_id=dual_input.case_id,
+                            agent_type="radiology",
+                            output_data={
+                                "findings": findings.gemini_output.findings,
+                                "abnormalities": findings.gemini_output.abnormalities,
+                                "anatomical_structures": findings.gemini_output.anatomical_structures,
+                                "image_quality": findings.gemini_output.image_quality,
+                                "dual_model_decision": findings.final_decision,
+                            },
+                            confidence=findings.gemini_output.confidence,
+                            processing_time=elapsed,
+                        )
+                    finally:
+                        db.close()
+                except Exception as db_err:
+                    print(f"   ⚠️  DB save failed (non-fatal): {db_err}")
+
+                # Use Gemini output as the canonical findings for downstream agents
+                gemini = findings.gemini_output
+                print(f"   ✅ Dual-model radiology completed in {elapsed:.2f}s | decision={findings.final_decision}")
+                return {
+                    "case_id": dual_input.case_id,
+                    "radiology_findings": gemini.findings,
+                    "abnormalities": gemini.abnormalities,
+                    "anatomical_structures": gemini.anatomical_structures,
+                    "confidence": gemini.confidence,
+                    "image_quality": gemini.image_quality,
+                    "radiology_recommendations": [gemini.recommendations] if gemini.recommendations else [],
+                    "radiology_complete": gemini.confidence > 0.0,  # continue pipeline even on FAIL/RETRY
+                    "dual_radiology_findings": findings.model_dump(),
+                    "stage_timings": {"radiology": round(float(elapsed), 2)},
+                    "errors": [] if findings.final_decision == "PASS" else [
+                        f"Dual-model validation {findings.final_decision}: {findings.decision_reasoning}"
+                    ],
+                }
+            else:
+                # --- Single-model path (original behaviour) ---
+                xray_input = XrayInput(
+                    image_path=state["image_path"],
+                    patient_code=state["patient_code"],
+                    case_id=state.get("case_id") or str(uuid.uuid4()),
+                    additional_info=state.get("additional_info", ""),
+                    thread_id=state.get("thread_id"),
+                )
+                result = await self.radiology_agent.analyze(xray_input, save_to_db=True)
+                elapsed = time.time() - start_time
+                print(f"   ✅ Radiology completed in {elapsed:.2f}s")
+                return {
+                    "case_id": xray_input.case_id,
+                    "radiology_findings": result.findings,
+                    "abnormalities": result.abnormalities,
+                    "anatomical_structures": result.anatomical_structures,
+                    "confidence": result.confidence,
+                    "image_quality": result.image_quality,
+                    "radiology_recommendations": result.recommendations,
+                    "radiology_complete": True,
+                    "stage_timings": {"radiology": round(float(elapsed), 2)},
+                    "errors": [],
+                }
+
         except Exception as e:
             elapsed = time.time() - start_time
             print(f"   ❌ Radiology failed in {elapsed:.2f}s: {str(e)}")
             return {
                 "radiology_complete": False,
                 "stage_timings": {"radiology": round(float(elapsed), 2)},
-                "errors": [f"Radiology error: {str(e)}"]
+                "errors": [f"Radiology error: {str(e)}"],
             }
     
     async def _parallel_analysis_node(self, state: MedicalPipelineState) -> Dict:
@@ -359,7 +430,8 @@ class MedicalPipeline:
         patient_code: str = "UNKNOWN",
         additional_info: Optional[str] = None,
         patient_history: Optional[str] = None,
-        thread_id: Optional[str] = None
+        thread_id: Optional[str] = None,
+        use_dual_model: bool = False,
     ) -> Dict:
         """Run the complete medical AI pipeline"""
         print("\n" + "="*60)
@@ -384,6 +456,7 @@ class MedicalPipeline:
             additional_info=additional_info,
             patient_history=patient_history,
             thread_id=thread_id,
+            use_dual_model=use_dual_model,
             radiology_findings=None,
             abnormalities=None,
             anatomical_structures=None,
@@ -391,6 +464,7 @@ class MedicalPipeline:
             image_quality=None,
             radiology_recommendations=None,
             radiology_complete=None,
+            dual_radiology_findings=None,
             differential_diagnosis=None,
             clinical_reasoning=None,
             clinical_urgency=None,

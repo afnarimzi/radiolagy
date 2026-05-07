@@ -53,6 +53,7 @@ const Analysis = () => {
   const [patientCode, setPatientCode] = useState(currentAnalysis.patientCode);
   const [additionalInfo, setAdditionalInfo] = useState(currentAnalysis.additionalInfo);
   const [patientHistory, setPatientHistory] = useState(currentAnalysis.patientHistory);
+  const [useDualModel, setUseDualModel] = useState(true);
 
   // Use global state for analysis data
   const isAnalyzing = currentAnalysis.isAnalyzing;
@@ -107,6 +108,7 @@ const Analysis = () => {
       formData.append('patient_code', patientCode);
       formData.append('additional_info', additionalInfo);
       formData.append('patient_history', patientHistory);
+      formData.append('use_dual_model', useDualModel ? 'true' : 'false');
 
       // Start the analysis
       const response = await fetch('/api/upload-complete-pipeline-with-chairman', {
@@ -639,9 +641,25 @@ const Analysis = () => {
           />
         </div>
 
+        {/* Dual Model Toggle */}
+        <div className="mt-4 flex items-center gap-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useDualModel}
+              onChange={(e) => setUseDualModel(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+          </label>
+          <div>
+            <span className="text-sm font-semibold text-purple-800">Dual-Model Validation</span>
+            <p className="text-xs text-purple-600">Runs Gemini + Groq in parallel with consensus validation</p>
+          </div>
+        </div>
+
         {/* Start Analysis Button */}
-        <div className="mt-6 flex justify-center space-x-4">
-          <button
+        <div className="mt-6 flex justify-center space-x-4">          <button
             onClick={startAnalysis}
             disabled={!selectedFile || !patientCode || isAnalyzing}
             className={`flex items-center space-x-2 px-8 py-3 rounded-lg font-medium transition-colors duration-200 ${

@@ -29,7 +29,7 @@ PUBMED_SUMMARY_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcg
 class EvidenceAgent:
     def __init__(self):
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        self.model = "llama-3.1-8b-instant"  # Stable GROQ model
+        self.model = "llama-3.3-70b-versatile"  # Higher TPM limits
 
     @simple_timer.time_agent("Evidence Agent")
     async def analyze(self, evidence_input: EvidenceInput, save_to_db: bool = True) -> EvidenceFindings:
